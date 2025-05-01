@@ -5,8 +5,69 @@
     void yyerror(char *);
 %}
 
+%union {
+    int i;
+    float f;
+    char* id;
+}
+
+%token <i> INT_NUM;
+%token <f> FLOAT_NUM;
+%token <id> ID;
+
+%token IF THEN ELSE WHILE DO INT FLOAT RETURN
+%token ASSIGN EQ NEQ LE GE LT GT
+%token PLUS MINUS MUL DIV
+%token LPAREN RPAREN LBRACE RBRACE SEMI COMMA
+%token SWITCH CASE DEFAULT COLON FOR
+
 /* Production rules */
-%%
+%%  
+    
+    statement_list: statement
+    | statement_list statement
+    ;
+    statement: conditional_statement
+    | loops
+    | simple_statement
+    ;
+    conditional_statement: if_statement
+    | switch_statement
+    ;
+    loops: for_loop 
+    | while_loop
+    | do_while_loop
+    ;
+    if_statement: matched_if_statement
+    | unmatched_if_statement
+    ;
+    matched_if_statement: IF LPAREN expression RPAREN LBRACE statement_list RBRACE
+    | IF LPAREN expression RPAREN simple_statement ELSE simple_statement
+    | IF LPAREN expression RPAREN LBRACE statement_list RBRACE ELSE LBRACE statement_list RBRACE
+    ;
+    unmatched_if_statement: IF LPAREN expression RPAREN LBRACE statement_list RBRACE
+    | IF LPAREN expression RPAREN simple_statement
+    ;
+    switch_statement: SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE
+    ;
+    switch_case_list: switch_case
+    | switch_case_list switch_case
+    ;
+    switch_case: CASE constant COLON statement_list
+    | DEFAULT COLON statement_list
+    ;
+    for_loop: FOR LPAREN expression SEMI expression SEMI expression RPAREN LBRACE statement_list RBRACE
+    | FOR LPAREN expression SEMI expression SEMI expression RPAREN simple_statement
+    ;
+    while_loop: WHILE LPAREN expression RPAREN LBRACE statement_list RBRACE
+    | WHILE LPAREN expression RPAREN simple_statement
+    ;
+    do_while_loop: DO LBRACE statement_list RBRACE WHILE LPAREN expression RPAREN SEMI
+    ;
+    constant: INT_NUM | FLOAT_NUM | ID;
+    simple_statement: expression SEMI
+    ;
+    
 
 %%
 
