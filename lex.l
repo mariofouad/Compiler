@@ -13,6 +13,14 @@ void yyerror(const char *);
 
 "int"           { return INT; }
 "float"         { return FLOAT; }
+"char"          { return CHAR; }
+"double"        { return DOUBLE; }
+"bool"          { return BOOL; }
+"string"        { return STRING; } 
+"long"          { return LONG; }
+"short"         { return SHORT; }
+"unsigned"      { return UNSIGNED; }
+"signed"        { return SIGNED; }
 "const"         { return CONST; }
 "void"          { return VOID; }
 "if"            { return IF; }
@@ -25,6 +33,9 @@ void yyerror(const char *);
 "default"       { return DEFAULT; }
 "break"         { return BREAK; }
 "return"        { return RETURN; }
+
+"true"          { return BOOL_LITERAL; }
+"false"         { return BOOL_LITERAL; }
 
 "&&"            { return AND; }
 "||"            { return OR; }
@@ -53,6 +64,8 @@ void yyerror(const char *);
 ","             { return COMMA; }
 ":"             { return COLON; }
 
+\'[^\']\'             { yylval.i = yytext[1]; return CHAR_LITERAL; }
+\"([^\\\"]|\\.)*\"    { yylval.id = strdup(yytext); return STRING_LITERAL; }
 [0-9]+"."[0-9]*     { yylval.f = atof(yytext); return FLOAT_LITERAL; }
 [0-9]+              { yylval.i = atoi(yytext); return INT_LITERAL; }
 [a-zA-Z_][a-zA-Z0-9_]* { yylval.id = strdup(yytext); return ID; }
