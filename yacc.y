@@ -126,7 +126,6 @@ statement
     : assignment SEMI
     | conditional_statement
     | loops
-    | simple_statement
     | block
     ;
 
@@ -153,13 +152,11 @@ if_statement : matched_if_statement
              | unmatched_if_statement
              ;
     
-matched_if_statement : IF LPAREN expression RPAREN block
-                     | IF LPAREN expression RPAREN simple_statement ELSE simple_statement
-                     | IF LPAREN expression RPAREN block ELSE block
+matched_if_statement : IF LPAREN expression RPAREN block /* if (condition) {statement} */
+                     | IF LPAREN expression RPAREN block ELSE block /* if (condition) {statement} else {statement} */
                      ;
     
 unmatched_if_statement : IF LPAREN expression RPAREN block
-                       | IF LPAREN expression RPAREN simple_statement
                        ;
 
 switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE
@@ -174,11 +171,9 @@ switch_case : CASE constant COLON statement_list
             ;
 
 for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
-         | FOR LPAREN expression SEMI expression SEMI expression RPAREN simple_statement
          ;
     
 while_loop : WHILE LPAREN expression RPAREN block
-           | WHILE LPAREN expression RPAREN simple_statement
            ;
 
 do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI
@@ -188,10 +183,7 @@ constant : INT_LITERAL
          | FLOAT_LITERAL
          | ID
          ;
-
-simple_statement: expression SEMI
-                ;
-                
+           
 function_list : /* empty */
               | function_list function_definition
               ;
