@@ -15,9 +15,20 @@
 %token <f> FLOAT_NUM;
 %token <id> ID;
 
+%token IF THEN ELSE WHILE DO INT FLOAT RETURN
+%token ASSIGN EQ NEQ LE GE LT GT
+%token PLUS MINUS MUL DIV
+%token LPAREN RPAREN LBRACE RBRACE SEMI COMMA
+%token SWITCH CASE DEFAULT COLON FOR
+
 /* Production rules */
 %%
-    
+    statement_list: statement
+    | statement_list statement
+    ;
+    statement: conditional_statement
+    | loops
+    ;
     conditional_statement: if_statement
     | switch_statement
     ;
@@ -32,7 +43,7 @@
     | IF LPAREN expression RPAREN LBRACE statement_list RBRACE ELSE LBRACE statement_list RBRACE
     ;
     unmatched_if_statement: IF LPAREN expression RPAREN LBRACE statement_list RBRACE
-    
+    ;
     switch_statement: SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE
     ;
     switch_case_list: switch_case
@@ -41,24 +52,13 @@
     switch_case: CASE constant COLON statement_list
     | DEFAULT COLON statement_list
     ;
-    for_loop:
-    LPAREN: '(';
-    RPAREN: ')';
-    LBRACE: '{';
-    RBRACE: '}';
-    IF: 'if';
-    ELSE: 'else';
-    SWITCH: 'switch';
-    CASE: 'case';
-    DEFAULT: 'default';
-    FOR: 'for';
-    WHILE: 'while';
-    DO: 'do';
-    BREAK: 'break';
-    CONTINUE: 'continue';
-    RETURN: 'return';
-    COLON: ':';
-    SEMICOLON: ';';
+    for_loop: FOR LPAREN expression SEMI expression SEMI expression RPAREN LBRACE statement_list RBRACE
+    ;
+    while_loop: WHILE LPAREN expression RPAREN LBRACE statement_list RBRACE
+    ;
+    do_while_loop: DO LBRACE statement_list RBRACE WHILE LPAREN expression RPAREN SEMI
+    ;
+    
 
 %%
 
