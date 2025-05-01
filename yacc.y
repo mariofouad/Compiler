@@ -42,15 +42,26 @@
 
 program:    program declaration
             | program function_list
-            | /*empty*/
             ;
 
-declaration : type ID SEMI
-            | type ID ASSIGN expression SEMI
+/* declaration : type ID SEMI
+            | type expression SEMI
+            | declaration
+            | const_decl
+            ; */
+
+declaration: type declaration
+            | ID declaration
+            | COMMA declaration
+            | expression declaration
+            | SEMI
             | const_decl
             ;
 
-const_decl  : CONST type ID ASSIGN expression SEMI
+const_decl  : CONST type const_decl
+            | expression const_decl
+            | COMMA const_decl
+            | SEMI
             ;
 
 primary_expression: ID
@@ -118,18 +129,12 @@ type          : INT
               | CONST type
               ;
 
-var_list      : ID
-              | var_list COMMA ID
-              ;
-
 statement
     : assignment SEMI
     | conditional_statement
     | loops
     | block
     ;
-
-    
 
 assignment    : ID ASSIGN expression
               ;
