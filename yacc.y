@@ -23,7 +23,7 @@
 %token <id> STRING_LITERAL
 %token <i> BOOL_LITERAL
 
-%token IF THEN ELSE WHILE DO RETURN BREAK MOD NOT VOID
+%token IF ELSE WHILE DO RETURN BREAK MOD NOT VOID CONTINUE
 %token ASSIGN EQ NEQ LE GE LT GT
 %token PLUS MINUS MUL DIV
 %token LPAREN RPAREN LBRACE RBRACE SEMI COMMA
@@ -72,6 +72,7 @@ type
 
 function_definition
     : type ID LPAREN parameter_list RPAREN block
+    | VOID ID LPAREN parameter_list RPAREN block
     ;
 
 argument_list
@@ -86,6 +87,7 @@ argument_sequence
 
 parameter_list
     : /* empty */
+    | VOID
     | parameter_declaration
     | parameter_list COMMA parameter_declaration
     ;
@@ -111,6 +113,8 @@ statement
     | conditional_statement
     | loops
     | block
+    | CONTINUE SEMI
+    | BREAK SEMI
     | RETURN expression SEMI
     | RETURN SEMI
     ;
@@ -118,7 +122,6 @@ statement
 expression
     : logical_or_expression
     | expression ASSIGN expression
-    | declaration
     ;
 
 logical_or_expression
@@ -150,11 +153,13 @@ mathematical_expression
 term
     : term MUL factor
     | term DIV factor
+    | term MOD factor
     | factor
     ;
 
 factor
     : primary_expression
+    | NOT factor
     | LPAREN expression RPAREN
     ;
 
@@ -191,11 +196,13 @@ loops
     | do_while_loop
     ;
 
-for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN statement ;
+for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
+         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block  
+         ;
 
-while_loop : WHILE LPAREN expression RPAREN statement ;
+while_loop : WHILE LPAREN expression RPAREN block ;
 
-do_while_loop : DO statement WHILE LPAREN expression RPAREN SEMI ;
+do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI ;
 
 %%
 
