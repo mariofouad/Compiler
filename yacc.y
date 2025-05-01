@@ -42,7 +42,6 @@
 
 program:    program declaration
             | program function_list
-            | /*empty*/
             ;
 
 /* declaration : type ID SEMI
