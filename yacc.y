@@ -41,19 +41,18 @@
 %%  
 
 program:    program declaration
+            | program function_list
             | /*empty*/
             ;
+
 declaration : type ID SEMI
             | type ID ASSIGN expression SEMI
             | const_decl
             ;
-const_decl       : CONST type ID ASSIGN expression SEMI
+
+const_decl  : CONST type ID ASSIGN expression SEMI
             ;
-/* type        : INT 
-            | FLOAT
-            | CHAR
-            | STR
-            ; */
+
 primary_expression: ID
             | STRING_LITERAL
             | CHAR_LITERAL
@@ -62,39 +61,41 @@ primary_expression: ID
             | BOOL_LITERAL
             | LPAREN expression RPAREN
             ;
-logical_or_expression: 
-            logical_and_expression
-            | logical_or_expression OR logical_and_expression
-            ;
-logical_and_expression: comparison_expression
-            | logical_and_expression AND comparison_expression
-            ;
+            
+logical_or_expression: logical_and_expression
+                     | logical_or_expression OR logical_and_expression
+                     ;
+
+logical_and_expression : comparison_expression
+                       | logical_and_expression AND comparison_expression
+                       ;
+
 comparison_expression : mathematical_expression
-            | comparison_expression EQ EQ mathematical_expression   // ==
+            | comparison_expression EQ mathematical_expression   // ==
             | comparison_expression NEQ mathematical_expression    // !=
             | comparison_expression LT mathematical_expression    // <
             | comparison_expression GT mathematical_expression    // >
             | comparison_expression LE mathematical_expression    // <=
             | comparison_expression GE mathematical_expression    // >=
             ;
-mathematical_expression: 
-            term
+
+mathematical_expression: term
             | mathematical_expression PLUS term
             | mathematical_expression MINUS term
             ;
+
 term:       term MUL factor
             | term DIV factor
             | factor
             ;
+            
 factor:     primary_expression
             | LPAREN mathematical_expression RPAREN //could add expression to allow anything in the paren (x==y) +1
             ;
+
 expression: logical_or_expression
             | expression ASSIGN expression
             ;
-
-/* program       : function_list
-              ; */
 
 block         : LBRACE block_items RBRACE
               ;
@@ -103,9 +104,6 @@ block_items   : /* empty */
               | block_items declaration
               | block_items statement
               ;
-
-/* declaration   : type var_list SEMI
-              ; */
 
 type          : INT
               | FLOAT
@@ -132,17 +130,11 @@ statement
     | block
     ;
 
+    
+
 assignment    : ID ASSIGN expression
               ;
 
-/* expression    : INT_LITERAL
-              | FLOAT_LITERAL
-              | ID
-              | expression PLUS expression
-              | expression MINUS expression
-              | expression MUL expression
-              | expression DIV expression
-              ; */
 
 statement_list : statement
                | statement_list statement
