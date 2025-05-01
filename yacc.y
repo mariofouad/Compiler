@@ -64,6 +64,7 @@
     ;
     do_while_loop: DO LBRACE statement_list RBRACE WHILE LPAREN expression RPAREN SEMI
     ;
+    constant: INT_NUM | FLOAT_NUM | ID;
     simple_statement: expression SEMI
     ;
     
