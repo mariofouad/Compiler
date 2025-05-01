@@ -22,11 +22,15 @@
 %token SWITCH CASE DEFAULT COLON FOR
 
 /* Production rules */
-%%
-    statement_list: statement
-    | statement_list statement
+%%  
+    simple_statement: expression SEMI
+    | SEMI
     ;
-    statement: conditional_statement
+    statement_list: simple_statement
+    | statement_list simple_statement
+    ;
+    statement: simple_statement
+    | conditional_statement
     | loops
     ;
     conditional_statement: if_statement
