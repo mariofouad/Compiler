@@ -23,15 +23,13 @@
 
 /* Production rules */
 %%  
-    simple_statement: expression SEMI
-    | SEMI
+    
+    statement_list: statement
+    | statement_list statement
     ;
-    statement_list: simple_statement
-    | statement_list simple_statement
-    ;
-    statement: simple_statement
-    | conditional_statement
+    statement: conditional_statement
     | loops
+    | simple_statement
     ;
     conditional_statement: if_statement
     | switch_statement
@@ -44,9 +42,11 @@
     | unmatched_if_statement
     ;
     matched_if_statement: IF LPAREN expression RPAREN LBRACE statement_list RBRACE
+    | IF LPAREN expression RPAREN simple_statement ELSE simple_statement
     | IF LPAREN expression RPAREN LBRACE statement_list RBRACE ELSE LBRACE statement_list RBRACE
     ;
     unmatched_if_statement: IF LPAREN expression RPAREN LBRACE statement_list RBRACE
+    | IF LPAREN expression RPAREN simple_statement
     ;
     switch_statement: SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE
     ;
@@ -57,10 +57,14 @@
     | DEFAULT COLON statement_list
     ;
     for_loop: FOR LPAREN expression SEMI expression SEMI expression RPAREN LBRACE statement_list RBRACE
+    | FOR LPAREN expression SEMI expression SEMI expression RPAREN simple_statement
     ;
     while_loop: WHILE LPAREN expression RPAREN LBRACE statement_list RBRACE
+    | WHILE LPAREN expression RPAREN simple_statement
     ;
     do_while_loop: DO LBRACE statement_list RBRACE WHILE LPAREN expression RPAREN SEMI
+    ;
+    simple_statement: expression SEMI
     ;
     
 
