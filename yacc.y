@@ -14,6 +14,7 @@
 /* Subroutines */
 void yyerror(char *s) {
     fprintf(stderr, "%s\n", s);
+    exit(0);
 }
 
 int main(int argc, char **argv) {
