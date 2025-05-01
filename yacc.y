@@ -29,6 +29,7 @@
 %token LPAREN RPAREN LBRACE RBRACE SEMI COMMA
 %token SWITCH CASE DEFAULT COLON FOR
 %token CHAR CONST STR OR AND
+%token DOUBLE BOOL SHORT LONG UNSIGNED SIGNED
 
 %right EQ
 %left COMMA
@@ -48,11 +49,11 @@ declaration : type ID SEMI
             ;
 const_decl       : CONST type ID ASSIGN expression SEMI
             ;
-type        : INT 
+/* type        : INT 
             | FLOAT
             | CHAR
             | STR
-            ;
+            ; */
 primary_expression: ID
             | STRING_LITERAL
             | CHAR_LITERAL
@@ -92,8 +93,8 @@ expression: logical_or_expression
             | expression ASSIGN expression
             ;
 
-program       : function_list
-              ;
+/* program       : function_list
+              ; */
 
 block         : LBRACE block_items RBRACE
               ;
@@ -103,8 +104,8 @@ block_items   : /* empty */
               | block_items statement
               ;
 
-declaration   : type var_list SEMI
-              ;
+/* declaration   : type var_list SEMI
+              ; */
 
 type          : INT
               | FLOAT
@@ -134,14 +135,14 @@ statement
 assignment    : ID ASSIGN expression
               ;
 
-expression    : INT_LITERAL
+/* expression    : INT_LITERAL
               | FLOAT_LITERAL
               | ID
               | expression PLUS expression
               | expression MINUS expression
               | expression MUL expression
               | expression DIV expression
-              ;
+              ; */
 
 statement_list : statement
                | statement_list statement
