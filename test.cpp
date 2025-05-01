@@ -1,3 +1,6 @@
-int main(){
-    const int x = 8, y = 8;
+int main (){
+    int x;
+    if(x = 3){
+      
+    }
 }
