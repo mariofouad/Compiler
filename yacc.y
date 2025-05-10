@@ -1,10 +1,88 @@
 %{
     #include <stdio.h>
     #include <stdlib.h>
+    #define MAX 1000
+
+    // === SYMBOL TABLE ===
+typedef struct Symbol {
+    char *name;
+    char *type;
+    int isConstant;
+    struct Symbol *next;
+} Symbol;
+
+Symbol* symbolTable = NULL;
+char* currentType = NULL;
+
+void insertSymbol(char* name, char* type, int isConst) {
+    Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
+    sym->name = strdup(name);
+    sym->type = strdup(type);
+    sym->isConstant = isConst;
+    sym->next = symbolTable;
+    symbolTable = sym;
+}
+
+int lookup(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0)
+            return 1;
+        sym = sym->next;
+    }
+    return 0;
+}
+
+// === INTERMEDIATE CODE ===
+typedef struct {
+    char* op;
+    char* arg1;
+    char* arg2;
+    char* result;
+} Quadruple;
+
+Quadruple quads[MAX];
+int quadIndex = 0;
+int tempCount = 0;
+int labelCount = 0;
+
+char* newLabel() {
+    char* name = malloc(10);
+    sprintf(name, "L%d", labelCount++);
+    return name;
+}
+
+
+char* newTemp() {
+    char temp[10];
+    sprintf(temp, "t%d", tempCount++);
+    return strdup(temp);
+}
+
+void emit(char* op, char* arg1, char* arg2, char* result) {
+    quads[quadIndex].op = strdup(op);
+    quads[quadIndex].arg1 = strdup(arg1);
+    quads[quadIndex].arg2 = strdup(arg2);
+    quads[quadIndex].result = strdup(result);
+    quadIndex++;
+}
+
+void printQuads() {
+    printf("\nGenerated Quadruples:\n");
+    for (int i = 0; i < quadCount; i++) {
+        printf("%d: (%s, %s, %s, %s)\n", i, quads[i].op, quads[i].arg1, quads[i].arg2, quads[i].result);
+    }
+}
+
+
+    // === ERROR HANDLING ===
+    extern int yylineno;
+    extern char* yytext;
     extern FILE *yyin;
     int yylex(void);
-    void yyerror(char *);
-%}
+    void yyerror(char* s) {
+    fprintf(stderr, "Syntax Error: %s at line %d near '%s'\n", s, yylineno, yytext);
+}%}
 
 %union{
     int i;
@@ -221,6 +299,7 @@ int main(int argc, char **argv) {
     }
 
     if (yyparse() == 0){
+        printQuads();
         return 0;
     }
 
