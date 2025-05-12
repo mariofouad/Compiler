@@ -101,6 +101,7 @@ void printQuads() {
 %token <id> STRING_LITERAL
 %token <i> BOOL_LITERAL
 
+
 %token IF ELSE WHILE DO RETURN BREAK MOD NOT VOID CONTINUE
 %token ASSIGN EQ NEQ LE GE LT GT
 %token PLUS MINUS MUL DIV
@@ -112,6 +113,8 @@ void printQuads() {
 %left COMMA
 
 %start program
+
+%type <id> constant
 
 %%
 
@@ -266,7 +269,15 @@ switch_case : CASE constant COLON statement
             | DEFAULT COLON statement
             ;
 
-constant : INT_LITERAL | FLOAT_LITERAL | ID ;
+constant : INT_LITERAL {$$ = strdup($1)}
+| FLOAT_LITERAL {$$ = strdup($1)}
+| ID {
+    if(!lockup($1)){
+        yyerror("Undeclared identifier used as a constant for switch\n");
+    }
+    $$ = strdup($1);
+}
+;
 
 loops
     : for_loop
@@ -275,12 +286,55 @@ loops
     ;
 
 for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
-         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block  
+        {
+            char* start = newLabel();
+            char* end = newLabel();
+            // emit code related to init
+            emit("label", "", "", start);
+            emit("ifFalseGoTo", $5, "", end);
+            // emite code l body ally hwa l b lock;
+            // emit code for incrementing
+            emit("goto", "", "", start);
+            emit("label", "", "", "end");
+            
+        }
+         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block
+         {
+            char* start = newLabel();
+            char* end = newLabel();
+            emit("label", "", "", start);
+            emit("ifFalseGoTo", $6, "", end);
+            // emite code l body ally hwa l b lock;
+            // emit code for incrementing
+            emit("goto", "", "", start);
+            emit("label", "", "", "end");
+            }
          ;
 
-while_loop : WHILE LPAREN expression RPAREN block ;
+while_loop : WHILE LPAREN expression RPAREN block {
+    char* start = newLabel();
+    char* end = newLabel();
+    // emit condition expression
+    emit("label", "", "", start);
+    emit("ifFalseGoTo", $3, "", end);
+    // body
+    emit("goto", "", "", start);
+    emit("label", "", "", end);
+};
 
-do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI ;
+do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI
+    {
+        char* start = newLabel();
+        char* end = newLabel();
+        emit("label", "", "", start);
+
+        // emit code for block
+        // emit code for condition
+        emit("ifFalseGoTo", $5, "", end);
+        emit("goto", "", "", start);
+        emit("label", "", "", end);
+    }
+ ;
 
 %%
 
