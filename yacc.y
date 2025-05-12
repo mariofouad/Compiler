@@ -1,10 +1,88 @@
 %{
     #include <stdio.h>
     #include <stdlib.h>
-    FILE *yyin;
+    #define MAX 1000
+
+    // === SYMBOL TABLE ===
+typedef struct Symbol {
+    char *name;
+    char *type;
+    int isConstant;
+    struct Symbol *next;
+} Symbol;
+
+Symbol* symbolTable = NULL;
+char* currentType = NULL;
+
+void insertSymbol(char* name, char* type, int isConst) {
+    Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
+    sym->name = strdup(name);
+    sym->type = strdup(type);
+    sym->isConstant = isConst;
+    sym->next = symbolTable;
+    symbolTable = sym;
+}
+
+int lookup(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0)
+            return 1;
+        sym = sym->next;
+    }
+    return 0;
+}
+
+// === INTERMEDIATE CODE ===
+typedef struct {
+    char* op;
+    char* arg1;
+    char* arg2;
+    char* result;
+} Quadruple;
+
+Quadruple quads[MAX];
+int quadIndex = 0;
+int tempCount = 0;
+int labelCount = 0;
+
+char* newLabel() {
+    char* name = malloc(10);
+    sprintf(name, "L%d", labelCount++);
+    return name;
+}
+
+
+char* newTemp() {
+    char temp[10];
+    sprintf(temp, "t%d", tempCount++);
+    return strdup(temp);
+}
+
+void emit(char* op, char* arg1, char* arg2, char* result) {
+    quads[quadIndex].op = strdup(op);
+    quads[quadIndex].arg1 = strdup(arg1);
+    quads[quadIndex].arg2 = strdup(arg2);
+    quads[quadIndex].result = strdup(result);
+    quadIndex++;
+}
+
+void printQuads() {
+    printf("\nGenerated Quadruples:\n");
+    for (int i = 0; i < quadCount; i++) {
+        printf("%d: (%s, %s, %s, %s)\n", i, quads[i].op, quads[i].arg1, quads[i].arg2, quads[i].result);
+    }
+}
+
+
+    // === ERROR HANDLING ===
+    extern int yylineno;
+    extern char* yytext;
+    extern FILE *yyin;
     int yylex(void);
-    void yyerror(char *);
-%}
+    void yyerror(char* s) {
+    fprintf(stderr, "Syntax Error: %s at line %d near '%s'\n", s, yylineno, yytext);
+}%}
 
 %union{
     int i;
@@ -13,192 +91,81 @@
     char* id;
 }
 
-%token <i> INT      // FOR 'int' KEYWORD (type)
-%token <f> FLOAT    //for 'float' keyword (type)
-%token <id> ID      // for variable names (identifiiers)
-%token <id> STRING  //for 'string' keyword (type)
-%token <i> INT_LITERAL //for integer numbers
-%token <f> FLOAT_LITERAL    //for float numbers
-%token <c> CHAR_LITERAL     //for single character => NOTE THAT WE CAN ALSO USE i FOR CHARS
-%token <id> STRING_LITERAL  // for string literals
-%token <i> BOOL_LITERAL     // for true/false
+%token <i> INT
+%token <f> FLOAT
+%token <id> ID
+%token <id> STRING
+%token <i> INT_LITERAL
+%token <f> FLOAT_LITERAL
+%token <c> CHAR_LITERAL
+%token <id> STRING_LITERAL
+%token <i> BOOL_LITERAL
 
-%token IF THEN ELSE WHILE DO RETURN
+%token IF ELSE WHILE DO RETURN BREAK MOD NOT VOID CONTINUE
 %token ASSIGN EQ NEQ LE GE LT GT
 %token PLUS MINUS MUL DIV
 %token LPAREN RPAREN LBRACE RBRACE SEMI COMMA
-%token SWITCH CASE DEFAULT COLON FOR
-%token CHAR CONST STR OR AND
-%token DOUBLE BOOL SHORT LONG UNSIGNED SIGNED
+%token SWITCH CASE DEFAULT COLON FOR AND OR
+%token CHAR CONST DOUBLE BOOL SHORT LONG UNSIGNED SIGNED
 
-%right EQ
+%right ASSIGN
 %left COMMA
 
-// start symbol of the grammar
 %start program
 
+%%
 
-%%  
+program
+  : external_list
+  ;
 
-program:    program declaration
-            | program function_list
-            ;
+external_list
+  : /* empty */
+  | external_list external
+  ;
 
-/* declaration : type ID SEMI
-            | type expression SEMI
-            | declaration
-            | const_decl
-            ; */
+external
+  : function_definition
+  | declaration
+  ;
 
-declaration: type declaration
-            | ID declaration
-            | COMMA declaration
-            | expression declaration
-            | SEMI
-            | const_decl
-            ;
+declaration
+  : type var_list SEMI
+  | const_decl
+  ;
 
-const_decl  : CONST type const_decl
-            | expression const_decl
-            | COMMA const_decl
-            | SEMI
-            ;
+const_decl : CONST type var_list SEMI ;
 
-primary_expression: ID
-            | STRING_LITERAL
-            | CHAR_LITERAL
-            | FLOAT_LITERAL
-            | INT_LITERAL
-            | BOOL_LITERAL
-            | LPAREN expression RPAREN
-            ;
-            
-logical_or_expression: logical_and_expression
-                     | logical_or_expression OR logical_and_expression
-                     ;
+var_list: init_declarator
+  | var_list COMMA init_declarator
+  ;
 
-logical_and_expression : comparison_expression
-                       | logical_and_expression AND comparison_expression
-                       ;
+init_declarator: ID
+  | ID ASSIGN expression
+  ;
 
-comparison_expression : mathematical_expression
-            | comparison_expression EQ mathematical_expression   // ==
-            | comparison_expression NEQ mathematical_expression    // !=
-            | comparison_expression LT mathematical_expression    // <
-            | comparison_expression GT mathematical_expression    // >
-            | comparison_expression LE mathematical_expression    // <=
-            | comparison_expression GE mathematical_expression    // >=
-            ;
-
-mathematical_expression: term
-            | mathematical_expression PLUS term
-            | mathematical_expression MINUS term
-            ;
-
-term:       term MUL factor
-            | term DIV factor
-            | factor
-            ;
-            
-factor:     primary_expression
-            | LPAREN mathematical_expression RPAREN //could add expression to allow anything in the paren (x==y) +1
-            ;
-
-expression: logical_or_expression
-            | expression ASSIGN expression
-            ;
-
-block         : LBRACE block_items RBRACE
-              ;
-
-block_items   : /* empty */
-              | block_items declaration
-              | block_items statement
-              ;
-
-type          : INT
-              | FLOAT
-              | CHAR
-              | DOUBLE
-              | BOOL
-              | STRING
-              | LONG
-              | SHORT
-              | UNSIGNED
-              | SIGNED
-              | CONST type
-              ;
-
-statement
-    : assignment SEMI
-    | conditional_statement
-    | loops
-    | block
-    ;
-
-assignment    : ID ASSIGN expression
-              ;
-
-
-statement_list : statement
-               | statement_list statement
-               ;
-
-conditional_statement : if_statement
-                      | switch_statement
-                      ;
-
-loops : for_loop 
-      | while_loop
-      | do_while_loop
-      ;
-
-if_statement : matched_if_statement
-             | unmatched_if_statement
-             ;
-    
-matched_if_statement : IF LPAREN expression RPAREN block /* if (condition) {statement} */
-                     | IF LPAREN expression RPAREN block ELSE block /* if (condition) {statement} else {statement} */
-                     ;
-    
-unmatched_if_statement : IF LPAREN expression RPAREN block
-                       ;
-
-switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE
-                 ;
-    
-switch_case_list : switch_case
-                 | switch_case_list switch_case
-                 ;
-                
-switch_case : CASE constant COLON statement_list
-            | DEFAULT COLON statement_list
-            ;
-
-for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
-         ;
-    
-while_loop : WHILE LPAREN expression RPAREN block
-           ;
-
-do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI
-              ;
-
-constant : INT_LITERAL
-         | FLOAT_LITERAL
-         | ID
-         ;
-           
-function_list : /* empty */
-              | function_list function_definition
-              ;
+type
+  : INT | FLOAT | CHAR | DOUBLE | BOOL | STRING | LONG | SHORT | UNSIGNED | SIGNED
+  ;
 
 function_definition
     : type ID LPAREN parameter_list RPAREN block
+    | VOID ID LPAREN parameter_list RPAREN block
+    ;
+
+argument_list
+    : /* empty */
+    | argument_sequence
+    ;
+
+argument_sequence
+    : expression
+    | argument_sequence COMMA expression
     ;
 
 parameter_list
     : /* empty */
+    | VOID
     | parameter_declaration
     | parameter_list COMMA parameter_declaration
     ;
@@ -206,6 +173,114 @@ parameter_list
 parameter_declaration
     : type ID
     ;
+
+block : LBRACE block_items RBRACE ;
+
+block_items
+  : /* empty */
+  | block_items block_item
+  ;
+
+block_item
+  : declaration
+  | statement
+  ;
+
+statement
+    : expression SEMI
+    | conditional_statement
+    | loops
+    | block
+    | CONTINUE SEMI
+    | BREAK SEMI
+    | RETURN expression SEMI
+    | RETURN SEMI
+    ;
+
+expression
+    : logical_or_expression
+    | expression ASSIGN expression
+    ;
+
+logical_or_expression
+    : logical_and_expression
+    | logical_or_expression OR logical_and_expression
+    ;
+
+logical_and_expression
+    : comparison_expression
+    | logical_and_expression AND comparison_expression
+    ;
+
+comparison_expression
+    : mathematical_expression
+    | comparison_expression EQ mathematical_expression
+    | comparison_expression NEQ mathematical_expression
+    | comparison_expression LT mathematical_expression
+    | comparison_expression GT mathematical_expression
+    | comparison_expression LE mathematical_expression
+    | comparison_expression GE mathematical_expression
+    ;
+
+mathematical_expression
+    : term
+    | mathematical_expression PLUS term
+    | mathematical_expression MINUS term
+    ;
+
+term
+    : term MUL factor
+    | term DIV factor
+    | term MOD factor
+    | factor
+    ;
+
+factor
+    : primary_expression
+    | NOT factor
+    | LPAREN expression RPAREN
+    ;
+
+primary_expression
+    : ID
+    | STRING_LITERAL
+    | CHAR_LITERAL
+    | FLOAT_LITERAL
+    | INT_LITERAL
+    | BOOL_LITERAL
+    | ID LPAREN argument_list RPAREN
+
+    ;
+
+conditional_statement
+    : IF LPAREN expression RPAREN block
+    | IF LPAREN expression RPAREN block ELSE block
+    | switch_statement
+    ;
+
+switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE ;
+
+switch_case_list : /* empty */ | switch_case_list switch_case ;
+
+switch_case : CASE constant COLON statement
+            | DEFAULT COLON statement
+            ;
+
+constant : INT_LITERAL | FLOAT_LITERAL | ID ;
+
+loops
+    : for_loop
+    | while_loop
+    | do_while_loop
+    ;
+
+for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
+         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block  
+         ;
+
+while_loop : WHILE LPAREN expression RPAREN block ;
+
+do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI ;
 
 %%
 
@@ -224,6 +299,7 @@ int main(int argc, char **argv) {
     }
 
     if (yyparse() == 0){
+        printQuads();
         return 0;
     }
 

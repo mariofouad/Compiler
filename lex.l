@@ -32,6 +32,7 @@ void yyerror(const char *);
 "case"          { return CASE; }
 "default"       { return DEFAULT; }
 "break"         { return BREAK; }
+"continue"      { return CONTINUE; }
 "return"        { return RETURN; }
 
 "true"          { return BOOL_LITERAL; }
