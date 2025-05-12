@@ -69,12 +69,43 @@ void emit(char* op, char* arg1, char* arg2, char* result) {
 
 void printQuads() {
     printf("\nGenerated Quadruples:\n");
-    for (int i = 0; i < quadCount; i++) {
+    for (int i = 0; i < quadIndex; i++) {
         printf("%d: (%s, %s, %s, %s)\n", i, quads[i].op, quads[i].arg1, quads[i].arg2, quads[i].result);
     }
 }
+// Linked List representation of Cases
+typedef struct CaseLabel{
+    char* value;
+    char* label;
+    struct CaseLabel* next;
+} CaseLabel;
+CaseLabel* newCaseLabel(char* value, char* label){
+    CaseLabel* node = malloc(sizeof(CaseLabel));
+    node->value = strdup(value);
+    node->label = strdup(label);
+    node->next = NULL;
+    return node;
+}
+void emitCasees(CaseLabel* list, char* switchTemp){
+    char* endLabel = newLabel();
+    CaseLabel* curr = list;
+    char* defaultLabel = NULL;
+    while(curr){
+        if(strcmp(curr->value, "default") == 0){
+            defaultLabel = curr->label;
+        }else{
+            emit("ifEqual", switchTemp, curr->value, curr->label);
+        }
+        curr = curr->next;
+    }
+    if(defaultLabel){
+        emit("goto", "", "", defaultLabel);
+    }else{
+        emit("goto", "", "", endLabel);
+    }
 
-
+    emit("label", "", "", endLabel);
+}
     // === ERROR HANDLING ===
     extern int yylineno;
     extern char* yytext;
@@ -89,6 +120,7 @@ void printQuads() {
     float f;
     char c;
     char* id;
+    struct CaseLabel* caseLabel;
 }
 
 %token <i> INT
@@ -115,6 +147,8 @@ void printQuads() {
 %start program
 
 %type <id> constant
+%type <caseLabel> switch_case
+%type <caseLabel> switch_case_list
 
 %%
 
@@ -256,17 +290,54 @@ primary_expression
     ;
 
 conditional_statement
-    : IF LPAREN expression RPAREN block
-    | IF LPAREN expression RPAREN block ELSE block
+    : IF LPAREN expression RPAREN block{
+        char* end = newLabel();
+        emit("ifFalseGoTo", $3, "", end);
+        // emit block of code
+        emit("label", "", "", end);
+    }
+    | IF LPAREN expression RPAREN block ELSE block{
+        char* end = newLabel();
+        char* elseLabel = newLabel();
+        emit("ifFalseGoTo", $3, "", elseLabel);
+        // condition true block $5
+        emit("goto", "", "", endLabel);
+        emit("label", "", "", elseLabel);
+        // else code block $7;
+        emit("label", "", "", endLabel);
+    }
     | switch_statement
     ;
 
-switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE ;
+switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
+    // if expression is true
+    char* switchTemp = newTemp();
+    emit("assign", $3, "", switchTemp);
+    emitCases($6, switchTemp);           
+};
 
-switch_case_list : /* empty */ | switch_case_list switch_case ;
+switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
+    CaseLabel* q = $1;
+    if(!q) $$ = $2;
+    else{
+        while(q->next) q = q->next;
+        q->next = $2;
+        $$ = $1;
+    }
+};
 
-switch_case : CASE constant COLON statement
-            | DEFAULT COLON statement
+switch_case : CASE constant COLON statement{
+                char* label = new Label();
+                emit("label", "", "", label);
+                //emit statement code;
+                $$ = new CaseLabel($1, label);
+}
+            | DEFAULT COLON statement {
+                char* label = new Label();
+                emit("label", "", "", label);
+                // emit statement code
+                $$ = new CaseLabel("default", label);
+            }
             ;
 
 constant : INT_LITERAL {$$ = strdup($1)}
