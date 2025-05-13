@@ -33,6 +33,8 @@ Symbol* currentFunction = NULL; // Current function being processed
 int currentArgCount = 0;
 int semanticErrorOccurred = 0;
 int for_start = -1;
+int hasReturnStatement = 0;
+int blockNestingLevel = 0;
 
 
     // === ERROR HANDLING ===
@@ -596,19 +598,28 @@ function_definition
     : type ID {
         currentFunction = insertFunction($2, currentType);
         emit("function", $2, "", "");
-        enterScope();  // Enter function scope
+        enterScope();  
+        hasReturnStatement = 0;
+        blockNestingLevel = -1;  // So the function's main block is level 0
     } LPAREN parameter_list RPAREN block {
+        if (strcmp(currentFunction->returnType, "void") != 0 && hasReturnStatement == 0) {
+            char errorMsg[200];
+            sprintf(errorMsg, "Function '%s' with return type '%s' has no top-level return statement", $2, currentFunction->returnType);
+            semanticError(errorMsg);
+        }
         emit("endFunc", "", "", "");
-        exitScope();   // Exit function scope
+        exitScope();
         currentFunction = NULL;
     }
     | VOID ID {
         currentFunction = insertFunction($2, "void");
         emit("function", $2, "", "");
-        enterScope();  // Enter function scope
+        enterScope();
+        hasReturnStatement = 0;
+        blockNestingLevel = -1;  // So the function's main block is level 0
     } LPAREN parameter_list RPAREN block {
         emit("endFunc", "", "", "");
-        exitScope();   // Exit function scope
+        exitScope();
         currentFunction = NULL;
     }
     ;
@@ -649,7 +660,9 @@ parameter_declaration
 block 
     : LBRACE {
         enterScope();
-    } block_items RBRACE {
+        blockNestingLevel++;
+    } block_items RBRACE {        
+        blockNestingLevel--;
         exitScope();
         $$.name = strdup("");
         $$.type = strdup("void");
@@ -691,29 +704,45 @@ statement
         $$.name = strdup("");
         $$.type = strdup("void");
     }
-    | RETURN expression SEMI {
-        if (currentFunction) {
-            if (strcmp(currentFunction->returnType, $2.type) != 0) {
-                semanticError("Return type doesn't match function return type");
-            }
-            emit("return", $2.name, "", "");
+| RETURN expression SEMI {
+    if (currentFunction) {
+        if (strcmp(currentFunction->returnType, $2.type) != 0) {
+            semanticError("Return type doesn't match function return type");
         }
-        $$.name = strdup("");
-        $$.type = strdup("void");
+        
+        // Check if this is a nested return
+        if (blockNestingLevel > 0) {
+            semanticError("Return statement must be at the top level of function body");
+        } else {
+            hasReturnStatement = 1;
+        }
+        
+        emit("return", $2.name, "", "");
     }
-    | RETURN SEMI {
-        if (currentFunction && strcmp(currentFunction->returnType, "void") != 0) {
-            char errorMsg[100];
-            sprintf(errorMsg, "Function '%s' has return type '%s' but returns no value", 
-                    currentFunction->name, currentFunction->returnType);
-            semanticError(errorMsg);
-        }
-        if (currentFunction) {
-            emit("return", "", "", "");
-        }
-        $$.name = strdup("");
-        $$.type = strdup("void");
+    $$.name = strdup("");
+    $$.type = strdup("void");
+}
+| RETURN SEMI {
+    if (currentFunction && strcmp(currentFunction->returnType, "void") != 0) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Function '%s' has return type '%s' but returns no value", 
+                currentFunction->name, currentFunction->returnType);
+        semanticError(errorMsg);
     }
+    
+    // Check if this is a nested return
+    if (blockNestingLevel > 0) {
+        semanticError("Return statement must be at the top level of function body");
+    } else if (currentFunction) {
+        hasReturnStatement = 1;
+    }
+    
+    if (currentFunction) {
+        emit("return", "", "", "");
+    }
+    $$.name = strdup("");
+    $$.type = strdup("void");
+}
     ;
 
 
