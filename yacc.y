@@ -102,7 +102,39 @@ void printQuads() {
         printf("%d: (%s, %s, %s, %s)\n", i, quads[i].op, quads[i].arg1, quads[i].arg2, quads[i].result);
     }
 }
+// Linked List representation of Cases
+typedef struct CaseLabel{
+    char* value;
+    char* label;
+    struct CaseLabel* next;
+} CaseLabel;
+CaseLabel* newCaseLabel(char* value, char* label){
+    CaseLabel* node = malloc(sizeof(CaseLabel));
+    node->value = strdup(value);
+    node->label = strdup(label);
+    node->next = NULL;
+    return node;
+}
+void emitCases(CaseLabel* list, char* switchTemp){
+    char* endLabel = newLabel();
+    CaseLabel* curr = list;
+    char* defaultLabel = NULL;
+    while(curr){
+        if(strcmp(curr->value, "default") == 0){
+            defaultLabel = curr->label;
+        }else{
+            emit("ifEqual", switchTemp, curr->value, curr->label);
+        }
+        curr = curr->next;
+    }
+    if(defaultLabel){
+        emit("goto", "", "", defaultLabel);
+    }else{
+        emit("goto", "", "", endLabel);
+    }
 
+    emit("label", "", "", endLabel);
+}
     // === ERROR HANDLING ===
     extern int yylineno;
     extern char* yytext;
@@ -117,6 +149,7 @@ void printQuads() {
     float f;
     char c;
     char* id;
+    struct CaseLabel* caseLabel;
     struct {
         char* name;  // name of the result  (e.g., temp variable name)
         char* type;  // type of the result (e.g., "int", "float")
@@ -132,6 +165,7 @@ void printQuads() {
 %token <c> CHAR_LITERAL
 %token <id> STRING_LITERAL
 %token <i> BOOL_LITERAL
+
 
 %token IF ELSE WHILE DO RETURN BREAK MOD NOT VOID CONTINUE
 %token ASSIGN EQ NEQ LE GE LT GT
@@ -157,6 +191,10 @@ void printQuads() {
 
 
 %start program
+
+%type <id> constant
+%type <caseLabel> switch_case
+%type <caseLabel> switch_case_list
 
 %%
 
@@ -437,22 +475,74 @@ primary_expression
     }
 
     ;
-
-conditional_statement
-    : IF LPAREN expression RPAREN block
-    | IF LPAREN expression RPAREN block ELSE block
+    conditional_statement
+        : IF LPAREN expression RPAREN block {
+            char* endLabel = newLabel();
+            emit("ifFalseGoTo", $3.name, "", endLabel);
+            // Emit code for the block
+            emit("label", "", "", endLabel);
+        }
+        | IF LPAREN expression RPAREN block ELSE block {
+            char* endLabel = newLabel();
+            char* elseLabel = newLabel();
+            emit("ifFalseGoTo", $3.name, "", elseLabel);
+            // Emit code for the true block ($5)
+            emit("goto", "", "", endLabel);
+            emit("label", "", "", elseLabel);
+            // Emit code for the else block ($7)
+            emit("label", "", "", endLabel);
+        }
     | switch_statement
     ;
 
-switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE ;
+switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
+    // if expression is true
+    char* switchTemp = newTemp();
+    emit("assign", $3.name, "", switchTemp);
+    emitCases($6, switchTemp);           
+};
 
-switch_case_list : /* empty */ | switch_case_list switch_case ;
+switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
+    CaseLabel* q = $1;
+    if(!q) $$ = $2;
+    else{
+        while(q->next) q = q->next;
+        q->next = $2;
+        $$ = $1;
+    }
+};
 
-switch_case : CASE constant COLON statement
-            | DEFAULT COLON statement
+switch_case : CASE constant COLON statement{
+                char* label = newLabel();
+                emit("label", "", "", label);
+                //emit statement code;
+                $$ = newCaseLabel($2, label);
+}
+            | DEFAULT COLON statement {
+                char* label = newLabel();
+                emit("label", "", "", label);
+                // emit statement code
+                $$ = newCaseLabel("default", label);
+            }
             ;
 
-constant : INT_LITERAL | FLOAT_LITERAL | ID ;
+constant : INT_LITERAL {
+    char buffer[20];
+    sprintf(buffer, "%d", $1);
+    $$ = strdup(buffer);
+}
+| FLOAT_LITERAL {
+    char buffer[20];
+    sprintf(buffer, "%f", $1);
+    $$ = strdup(buffer);
+}
+| ID {
+    if(!lookup($1)){
+        yyerror("Undeclared identifier used as a constant for switch\n");
+    }
+    $$ = strdup($1);
+}
+;
 
 loops
     : for_loop
@@ -461,12 +551,55 @@ loops
     ;
 
 for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
-         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block  
+        {
+            char* start = newLabel();
+            char* end = newLabel();
+            // emit code related to init
+            emit("label", "", "", start);
+            emit("ifFalseGoTo", $5.name, "", end);
+            // emite code l body ally hwa l b lock;
+            // emit code for incrementing
+            emit("goto", "", "", start);
+            emit("label", "", "", end);
+            
+        }
+         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block
+         {
+            char* start = newLabel();
+            char* end = newLabel();
+            emit("label", "", "", start);
+            emit("ifFalseGoTo", $6.name, "", end);
+            // emite code l body ally hwa l b lock;
+            // emit code for incrementing
+            emit("goto", "", "", start);
+            emit("label", "", "", end);
+            }
          ;
 
-while_loop : WHILE LPAREN expression RPAREN block ;
+while_loop : WHILE LPAREN expression RPAREN block {
+    char* start = newLabel();
+    char* end = newLabel();
+    // emit condition expression
+    emit("label", "", "", start);
+    emit("ifFalseGoTo", $3.name, "", end);
+    // body
+    emit("goto", "", "", start);
+    emit("label", "", "", end);
+};
 
-do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI ;
+do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI
+    {
+        char* start = newLabel();
+        char* end = newLabel();
+        emit("label", "", "", start);
+
+        // emit code for block
+        // emit code for condition
+        emit("ifFalseGoTo", $5.name, "", end);
+        emit("goto", "", "", start);
+        emit("label", "", "", end);
+    }
+ ;
 
 %%
 

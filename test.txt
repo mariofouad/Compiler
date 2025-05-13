@@ -1,32 +1,5 @@
+int x = 5;
 
-int a = 5;
-int b = 3;
-int result;
-
-result = a + b;
-
-float x = 2.5;
-float y = 4.1;
-float z;
-
-z = x * y;
-
-float f;
-f = a + x;
-
-
-bool c1;
-c1 = a < b;
-
-bool c2;
-c2 = x >= y;
-
-
-bool c3;
-c3 = c1 && c2;
-
-bool c4;
-c4 = c1 || c2;
-
-int value;
-value = max(a, b); 
+for(int i = 0; i < 5; i = i + 1){
+    x = x + 1;
+}
