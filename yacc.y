@@ -42,12 +42,15 @@ int for_start = -1;
     fprintf(stderr, "Semantic Error : %s\n",  msg);
     semanticErrorOccurred = 1;
 }
+    extern int yylineno;
+    extern int column;
     extern char* yytext;
     extern FILE *yyin;
     int yylex(void);
-    void yyerror(char* s) {
-    fprintf(stderr, "Syntax Error: %s \n", s);
+    void yyerror(const char* msg) {
+    fprintf(stderr, "Syntax Error at line %d, column %d near '%s': %s\n", yylineno, column, yytext, msg);
 }
+
 
 int lookupInCurrentScope(char* name) {
     Symbol* sym = symbolTable;
