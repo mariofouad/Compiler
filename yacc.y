@@ -3,18 +3,29 @@
     #include <string.h>  // for strdup, strcmp
     #include <stdlib.h>
     #define MAX 1000
+    #define MAX_PARAMS 20  // Maximum number of parameters for a function
+    
 
     // === SYMBOL TABLE ===
 typedef struct Symbol {
     char *name;
     char *type;
     int isConstant;
+    int isFunction;           // Flag to indicate if this is a function
+    char *returnType;         // Return type for functions
+    struct Symbol *parameters[MAX_PARAMS];  // Array of parameter symbols
+    int paramCount;           // Number of parameters
+    int scopeLevel;           // Track scope level for block scoping
     struct Symbol *next;
 } Symbol;
 
 Symbol* symbolTable = NULL;
 char* currentType = NULL;
 int isConst = 0;
+int currentScopeLevel = 0;  //Scope level management
+Symbol* functionTable = NULL;   // Function table for storing function symbols
+Symbol* currentFunction = NULL; // Current function being processed
+int currentArgCount = 0;
 
 void insertSymbol(char* name, char* type, int isConst) {
     Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
@@ -34,6 +45,7 @@ int lookup(char* name) {
     }
     return 0;
 }
+
 char* getType(char* name) {
     Symbol* sym = symbolTable;
     while (sym != NULL) {
@@ -142,7 +154,151 @@ void emitCases(CaseLabel* list, char* switchTemp){
     int yylex(void);
     void yyerror(char* s) {
     fprintf(stderr, "Syntax Error: %s \n", s);
-}%}
+}
+
+    // === FUNCTION TABLE MANAGEMENT ===
+    Symbol* insertFunction(char* name, char* returnType) {
+        // check if function already exists
+        if (lookup(name)) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Function '%s' already declared", name);
+            yyerror(errorMsg);
+            return NULL;
+        }
+        
+        // Create function symbol
+        Symbol* func = (Symbol*)malloc(sizeof(Symbol));
+        func->name = strdup(name);
+        func->type = strdup("function");
+        func->returnType = strdup(returnType);
+        func->isFunction = 1;
+        func->isConstant = 0;
+        func->paramCount = 0;
+        func->next = functionTable;
+        func->scopeLevel = currentScopeLevel;
+        
+        // Insert into symbol table
+        Symbol* symFunc = (Symbol*)malloc(sizeof(Symbol));
+        symFunc->name = strdup(name);
+        symFunc->type = strdup(returnType);
+        symFunc->isConstant = 0;
+        symFunc->isFunction = 1;
+        symFunc->next = symbolTable;
+        symFunc->scopeLevel = currentScopeLevel;
+        symbolTable = symFunc;
+        
+        functionTable = func;
+        return func;
+    }
+
+    // Add a parameter to a function
+    void addParameter(Symbol* function, char* name, char* type) {
+        if (function->paramCount >= MAX_PARAMS) {
+            yyerror("Too many parameters for function");
+            return;
+        }
+        
+        // Create parameter symbol
+        Symbol* param = (Symbol*)malloc(sizeof(Symbol));
+        param->name = strdup(name);
+        param->type = strdup(type);
+        param->isConstant = 0;
+        param->isFunction = 0;
+        param->next = NULL;
+        param->scopeLevel = currentScopeLevel + 1;  // Parameters are in function's scope
+        
+        // Add to function's parameter list
+        function->parameters[function->paramCount++] = param;
+        
+        // Also add to symbol table
+        param->next = symbolTable;
+        symbolTable = param;
+    }
+
+    // Look up a function in the function table
+    Symbol* lookupFunction(char* name) {
+        Symbol* func = functionTable;
+        while (func != NULL) {
+            if (strcmp(func->name, name) == 0)
+                return func;
+            func = func->next;
+        }
+        return NULL;
+    }
+
+    // Enter a new scope (block)
+    void enterScope() {
+        currentScopeLevel++;
+    }
+
+    // Exit current scope
+    void exitScope() {
+        // Remove all symbols from the current scope level
+        Symbol* current = symbolTable;
+        Symbol* prev = NULL;
+        
+        while (current != NULL) {
+            if (current->scopeLevel == currentScopeLevel) {
+                // Remove this symbol
+                Symbol* toDelete = current;
+                if (prev == NULL) {
+                    symbolTable = current->next;
+                    current = symbolTable;
+                } else {
+                    prev->next = current->next;
+                    current = current->next;
+                }
+                free(toDelete->name);
+                free(toDelete->type);
+                free(toDelete);
+            } else {
+                prev = current;
+                current = current->next;
+            }
+        }
+        
+        currentScopeLevel--;
+    }
+
+    // Lookup in current scope or parent scopes
+    Symbol* lookupInScope(char* name) {
+        Symbol* sym = symbolTable;
+        while (sym != NULL) {
+            if (strcmp(sym->name, name) == 0)
+                return sym;
+            sym = sym->next;
+        }
+        return NULL;
+    }
+
+    // Generate function call code
+    char* generateFunctionCall(char* functionName, int argCount) {
+        char argCountStr[10];
+        sprintf(argCountStr, "%d", argCount);
+        
+        char* resultTemp = newTemp();
+        emit("call", functionName, argCountStr, resultTemp);
+        return resultTemp;
+    }
+
+    // Generate parameter passing code
+    void emitParameter(char* argName) {
+        emit("param", argName, "", "");
+    }
+
+    // Validate function call arguments against parameters
+    int validateFunctionCall(Symbol* func, int argCount) {
+        if (func->paramCount != argCount) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Function '%s' called with wrong number of arguments", func->name);
+            yyerror(errorMsg);
+            return 0;
+        }
+        // Ideally, we would also check argument types here
+        return 1;
+    }
+
+%}
 
 %union{
     int i;
@@ -248,18 +404,42 @@ type
     ;
 
 function_definition
-    : type ID LPAREN parameter_list RPAREN block
-    | VOID ID LPAREN parameter_list RPAREN block
+    : type ID {
+        currentFunction = insertFunction($2, currentType);
+        emit("function", $2, "", "");
+        enterScope();  // Enter function scope
+    } LPAREN parameter_list RPAREN block {
+        emit("endFunc", "", "", "");
+        exitScope();   // Exit function scope
+        currentFunction = NULL;
+    }
+    | VOID ID {
+        currentFunction = insertFunction($2, "void");
+        emit("function", $2, "", "");
+        enterScope();  // Enter function scope
+    } LPAREN parameter_list RPAREN block {
+        emit("endFunc", "", "", "");
+        exitScope();   // Exit function scope
+        currentFunction = NULL;
+    }
     ;
 
 argument_list
-    : /* empty */
+    : /* empty */ {
+        currentArgCount = 0;
+    }
     | argument_sequence
     ;
 
 argument_sequence
-    : expression
-    | argument_sequence COMMA expression
+    : expression {
+        emitParameter($1.name);
+        currentArgCount = 1; 
+    }
+    | argument_sequence COMMA expression {
+        emitParameter($3.name);
+        currentArgCount++;
+    }
     ;
 
 parameter_list
@@ -270,10 +450,20 @@ parameter_list
     ;
 
 parameter_declaration
-    : type ID
+    : type ID {
+        if (currentFunction) {
+            addParameter(currentFunction, $2, currentType);
+        }
+    }
     ;
 
-block : LBRACE block_items RBRACE ;
+block 
+    : LBRACE {
+        enterScope();
+    } block_items RBRACE {
+        exitScope();
+    }
+    ;
 
 block_items
   : /* empty */
@@ -467,14 +657,26 @@ primary_expression
     $$.type = strdup("bool");
     }
     | ID LPAREN argument_list RPAREN {
-    // need to check if the function is declared
-    char* temp = newTemp();
-    emit("CALL", $1, "", temp);
-    $$.name = temp;
-    $$.type = getType($1); // assuming function return type is stored in symbol table 
+        Symbol* func = lookupFunction($1);
+        if (!func) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Undefined function '%s'", $1);
+            yyerror(errorMsg);
+            $$.name = newTemp();
+            $$.type = strdup("unknown");
+        } else {
+            // Validate argument count
+            if (validateFunctionCall(func, currentArgCount)) {
+                $$.name = generateFunctionCall($1, currentArgCount);
+                $$.type = strdup(func->returnType);
+            } else {
+                $$.name = newTemp();
+                $$.type = strdup(func->returnType); // Still use return type if known
+            }
+        }
     }
-
     ;
+    
     conditional_statement
         : IF LPAREN expression RPAREN block {
             char* endLabel = newLabel();
