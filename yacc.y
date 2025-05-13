@@ -667,10 +667,10 @@ factor
     }
     | MINUS factor {
         char* temp = newTemp();
-        emit("-", $2.name, "", temp);
+        emit("uminus", $2.name, "", temp);
         $$.name = temp;
-        $$.type = $2.type; 
-    } // negative (-4)
+        $$.type = $2.type;
+    }
     ;
 
 primary_expression
