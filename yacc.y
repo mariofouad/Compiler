@@ -207,25 +207,21 @@ void emitCases(CaseLabel* list, char* switchTemp){
     }
 
 }
-void moveTwoToEnd(int n, int x) {
-    if (x < 0 || x >= n - 1) {
+void moveOneToEnd(int n, int x) {
+    if (x < 0 || x >= n) {
         printf("Invalid position\n");
         return;
     }
 
     Quadruple a = quads[x];
-    Quadruple b = quads[x + 1];
-
     // Shift elements left
-    for (int i = x + 2; i < n; i++) {
-        quads[i - 2] = quads[i];
+    for (int i = x + 1; i < n; i++) {
+        quads[i - 1] = quads[i];
     }
 
-    // Place the saved elements at the end
-    quads[n - 2] = a;
-    quads[n - 1] = b;
+    // Place the saved element at the end
+    quads[n - 1] = a;
 }
-
 
     // === FUNCTION TABLE MANAGEMENT ===
     Symbol* insertFunction(char* name, char* returnType) {
@@ -954,7 +950,7 @@ for_loop
         for_start = quadIndex;
     }
     expression RPAREN block {
-        moveTwoToEnd(quadIndex, for_start);
+        moveOneToEnd(quadIndex, for_start);
         char* end = pop();
         char* start = pop();
         emit("goto", "", "", start);
@@ -973,7 +969,7 @@ for_loop
         for_start = quadIndex;
     }
     expression RPAREN block {
-        moveTwoToEnd(quadIndex, for_start);       
+        moveOneToEnd(quadIndex, for_start);       
         char* end = pop();
         char* start = pop();
         emit("goto", "", "", start);
