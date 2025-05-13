@@ -533,6 +533,7 @@ primary_expression
 
     ;
     
+conditional_statement
     : IF LPAREN expression {
         char* elseLabel = newLabel();
         emit("ifFalseGoto", $3.name, "", elseLabel);
