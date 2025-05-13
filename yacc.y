@@ -17,6 +17,7 @@ typedef struct Symbol {
     int paramCount;           // Number of parameters
     int scopeLevel;           // Track scope level for block scoping
     struct Symbol *next;
+    int isInitialized;       // Flag to indicate if the variable is initialized
 } Symbol;
 
 Symbol* symbolTable = NULL;
@@ -66,9 +67,35 @@ void insertSymbol(char* name, char* type, int isConst) {
     sym->type = strdup(type);
     sym->isConstant = isConst;
     sym->next = symbolTable;
+    sym->isInitialized = 0; // Initialize to false for new symbols
     symbolTable = sym;
 }
 
+void setInitialized(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0) {
+            sym->isInitialized = 1; // Set to true
+            return;
+        }
+        sym = sym->next;
+    }
+}
+
+void checkInitialized(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0) {
+            if (!sym->isInitialized) {
+                char errorMsg[100];
+                sprintf(errorMsg, "Variable '%s' used before initialization", name);
+                semanticError(errorMsg);
+            }
+            return;
+        }
+        sym = sym->next;
+    }
+}
 
 char* getType(char* name) {
     Symbol* sym = symbolTable;
@@ -417,6 +444,7 @@ init_declarator: ID   { insertSymbol($1, currentType, isConst); }
                 semanticError(errorMsg);
             }
     insertSymbol($1, currentType, isConst);
+    setInitialized($1);  // mark as initialized
     emit("=", $3.name, "", $1);
   }
   ;
@@ -575,8 +603,10 @@ expression
         strcpy(quads[quadIndex - 1].result, $1.name);
         quadIndex--;  // remove redundant temp result
         emit(compound, $1.name, quads[quadIndex].arg2, $1.name);  // regenerate as compound
+        setInitialized($1.name);  // mark as initialized
     } else {
         emit("=", $3.name, "", $1.name);
+        setInitialized($1.name);  // mark as initialized
     }
 
     $$.name = $1.name;
@@ -715,6 +745,8 @@ primary_expression
     : ID { 
     if (!lookup($1)) {
         semanticError("Undeclared identifier used in expression");
+    } else  {
+        checkInitialized($1);  // Check if the variable is initialized
     }
     $$.name = $1;
     $$.type = getType($1);
@@ -857,6 +889,7 @@ for_init_decl
     : type ID ASSIGN expression {
         insertSymbol($2, currentType, isConst);
         emit("=", $4.name, "", $2);
+        setInitialized($2);  // mark as initialized
         $$.name = $2;
         $$.type = currentType;
     }
