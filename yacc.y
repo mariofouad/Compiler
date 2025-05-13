@@ -149,8 +149,25 @@ char* resolveType(char* type1, char* type2) {
         return "int";
     if (strcmp(type1, "char") == 0 && strcmp(type2, "char") == 0)
         return "char";
+    if (strcmp(type1, "bool") == 0 && strcmp(type2, "bool") == 0)
+        return "bool";
+    if ((strcmp(type1, "bool")==0 && strcmp(type2, "int")==0) || (strcmp(type1, "int")==0 && strcmp(type2, "bool")==0))
+        return "bool"; // bool and int can be mixed in some cases
+    
 
     return "unknown"; // add more logic if needed
+}
+int areTypesCompatible(char* expected, char* actual) {
+    if (expected == NULL || actual == NULL) {
+        return 0; // NULL types are not compatible
+    }
+    if (strcmp(expected, actual) == 0) {
+        return 1; // Types are the same
+    }
+    if((strcmp(expected, "int")==0 && strcmp(actual, "bool")==0) || (strcmp(expected, "bool")==0 && strcmp(actual, "int")==0)){
+        return 1; // bool and int can be mixed in some cases
+    }
+    return 0; // Types are not compatible
 }
 
 
@@ -279,9 +296,7 @@ void emitCases(CaseLabel* list, char* switchTemp){
         param->isFunction = 0;
         param->next = NULL;
         param->scopeLevel = currentScopeLevel + 1;  // Parameters are in function's scope
-
         param->isInitialized = 1;
-        
         // Add to function's parameter list
         function->parameters[function->paramCount++] = param;
         
@@ -568,7 +583,7 @@ init_declarator: ID   {
     }
     }
   | ID ASSIGN expression {
-    if (strcmp(currentType, $3.type) != 0) {
+    if (!areTypesCompatible(currentType, $3.type)) {
                 char errorMsg[200];
                 sprintf(errorMsg, "Type mismatch in initialization of '%s': expected '%s' but got '%s'", $1, currentType, $3.type);
                 semanticError(errorMsg);
@@ -697,11 +712,23 @@ statement
                 semanticError("Return type doesn't match function return type");
             }
             emit("return", $2.name, "", "");
+            emit("return", $2.name, "", "");
         }
+        $$.name = strdup("");
+        $$.type = strdup("void");
         $$.name = strdup("");
         $$.type = strdup("void");
     }
     | RETURN SEMI {
+        if (currentFunction && strcmp(currentFunction->returnType, "void") != 0) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Function '%s' has return type '%s' but returns no value", 
+                    currentFunction->name, currentFunction->returnType);
+            semanticError(errorMsg);
+        }
+        if (currentFunction) {
+            emit("return", "", "", "");
+        }
         if (currentFunction && strcmp(currentFunction->returnType, "void") != 0) {
             char errorMsg[100];
             sprintf(errorMsg, "Function '%s' has return type '%s' but returns no value", 
@@ -743,7 +770,8 @@ expression
         char* rhs_type = $3.type;
 
         // Only check type mismatch if the variable exists (has a type)
-        if (lhs_type != NULL && strcmp(lhs_type, rhs_type) != 0) {
+        if (lhs_type != NULL && !areTypesCompatible(lhs_type, rhs_type)) {
+        if (lhs_type != NULL && !areTypesCompatible(lhs_type, rhs_type)) {
             semanticError("Type mismatch in assignment");
         }
         
@@ -1050,7 +1078,6 @@ switch_case : CASE constant COLON {
                 char* label = newLabel();
                 emit("label", "", "", label);
                 //emit statement code;
-                printf("Stack length is %d\n", isStackEmpty());
                 push(label);
 
                 }
