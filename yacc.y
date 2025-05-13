@@ -28,6 +28,10 @@ Symbol* currentFunction = NULL; // Current function being processed
 int currentArgCount = 0;
 
 void insertSymbol(char* name, char* type, int isConst) {
+    if(lookup(name) == 1)
+    {
+        yyerror("Variable is redeclared");
+    }
     Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
     sym->name = strdup(name);
     sym->type = strdup(type);
