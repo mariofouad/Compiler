@@ -26,14 +26,22 @@ int currentScopeLevel = 0;  //Scope level management
 Symbol* functionTable = NULL;   // Function table for storing function symbols
 Symbol* currentFunction = NULL; // Current function being processed
 int currentArgCount = 0;
+int semanticErrorOccurred = 0;
 
-void insertSymbol(char* name, char* type, int isConst) {
-    Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
-    sym->name = strdup(name);
-    sym->type = strdup(type);
-    sym->isConstant = isConst;
-    sym->next = symbolTable;
-    symbolTable = sym;
+
+
+    // === ERROR HANDLING ===
+
+    extern int yylineno;
+    void semanticError(const char* msg) {
+    fprintf(stderr, "Semantic Error : %s\n",  msg);
+    semanticErrorOccurred = 1;
+}
+    extern char* yytext;
+    extern FILE *yyin;
+    int yylex(void);
+    void yyerror(char* s) {
+    fprintf(stderr, "Syntax Error: %s \n", s);
 }
 
 int lookup(char* name) {
@@ -45,6 +53,22 @@ int lookup(char* name) {
     }
     return 0;
 }
+
+void insertSymbol(char* name, char* type, int isConst) {
+    if (lookup(name)) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Variable '%s' already declared", name);
+        semanticError(errorMsg);
+        return;
+    }
+    Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
+    sym->name = strdup(name);
+    sym->type = strdup(type);
+    sym->isConstant = isConst;
+    sym->next = symbolTable;
+    symbolTable = sym;
+}
+
 
 char* getType(char* name) {
     Symbol* sym = symbolTable;
@@ -147,14 +171,7 @@ void emitCases(CaseLabel* list, char* switchTemp){
 
     emit("label", "", "", endLabel);
 }
-    // === ERROR HANDLING ===
-    extern int yylineno;
-    extern char* yytext;
-    extern FILE *yyin;
-    int yylex(void);
-    void yyerror(char* s) {
-    fprintf(stderr, "Syntax Error: %s \n", s);
-}
+
 
     // === FUNCTION TABLE MANAGEMENT ===
     Symbol* insertFunction(char* name, char* returnType) {
@@ -342,6 +359,8 @@ void emitCases(CaseLabel* list, char* switchTemp){
 %type <exprInfo> factor
 %type <exprInfo> primary_expression
 %type <exprInfo> statement
+%type <exprInfo> for_init_decl
+
 
 
 
@@ -392,6 +411,11 @@ var_list: init_declarator
 
 init_declarator: ID   { insertSymbol($1, currentType, isConst); }
   | ID ASSIGN expression {
+    if (strcmp(currentType, $3.type) != 0) {
+                char errorMsg[200];
+                sprintf(errorMsg, "Type mismatch in initialization of '%s': expected '%s' but got '%s'", $1, currentType, $3.type);
+                semanticError(errorMsg);
+            }
     insertSymbol($1, currentType, isConst);
     emit("=", $3.name, "", $1);
   }
@@ -521,15 +545,44 @@ expression
         $$ = $1;
     }
     | expression ASSIGN expression {
-        // need to check if the variable is declared and if the types match
-
-        char* lhs_type = getType($1.name);
-
-        emit("=", $3.name, "", $1.name);
-        $$.name = $1.name;
-        $$.type = lhs_type;
+    char* lhs_type = getType($1.name);
+    if (lhs_type == NULL) {
+    lhs_type = strdup("unknown"); // Fallback to avoid NULL dereference
     }
-    ;
+    char* rhs_type = $3.type;
+
+    if (strcmp(lhs_type, rhs_type) != 0) {
+        semanticError("Type mismatch in assignment");
+    }
+
+    // Check for i = i + 1 or similar
+    if (
+        $3.name[0] == 't' &&  // it's a temp
+        quadIndex >= 1 &&
+        (
+            (strcmp(quads[quadIndex - 1].op, "+") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "-") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "*") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "/") == 0)
+        ) &&
+        strcmp(quads[quadIndex - 1].result, $3.name) == 0 &&
+        strcmp(quads[quadIndex - 1].arg1, $1.name) == 0
+    ) {
+        // Overwrite previous temp op with compound assignment
+        char compound[4];
+        sprintf(compound, "%s=", quads[quadIndex - 1].op);
+        strcpy(quads[quadIndex - 1].op, compound);
+        strcpy(quads[quadIndex - 1].result, $1.name);
+        quadIndex--;  // remove redundant temp result
+        emit(compound, $1.name, quads[quadIndex].arg2, $1.name);  // regenerate as compound
+    } else {
+        emit("=", $3.name, "", $1.name);
+    }
+
+    $$.name = $1.name;
+    $$.type = lhs_type;
+}
+;
 
 logical_or_expression
     : logical_and_expression {
@@ -613,6 +666,7 @@ mathematical_expression
         $$.name = temp;
         $$.type = resolveType($1.type, $3.type);
     }
+    ;
 
 
 
@@ -658,8 +712,10 @@ factor
     ;
 
 primary_expression
-    : ID {
-    // need to check if the variable is declared 
+    : ID { 
+    if (!lookup($1)) {
+        semanticError("Undeclared identifier used in expression");
+    }
     $$.name = $1;
     $$.type = getType($1);
     }
@@ -779,7 +835,7 @@ constant : INT_LITERAL {
 }
 | ID {
     if(!lookup($1)){
-        yyerror("Undeclared identifier used as a constant for switch\n");
+        semanticError("Undeclared identifier used as a constant for switch\n");
     }
     $$ = strdup($1);
 }
@@ -797,6 +853,15 @@ loops
     }
     ;
 
+for_init_decl
+    : type ID ASSIGN expression {
+        insertSymbol($2, currentType, isConst);
+        emit("=", $4.name, "", $2);
+        $$.name = $2;
+        $$.type = currentType;
+    }
+    ;
+
 for_loop 
     : FOR LPAREN expression SEMI expression SEMI expression RPAREN block {
         char* start = newLabel();
@@ -808,15 +873,16 @@ for_loop
         $$.name = strdup("");
         $$.type = strdup("void");
     }
-    | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block {
-        char* start = newLabel();
-        char* end = newLabel();
-        emit("label", "", "", start);
-        emit("ifFalseGoTo", $6.name, "", end);
-        emit("goto", "", "", start);
-        emit("label", "", "", end);
-        $$.name = strdup("");
-        $$.type = strdup("void");
+    | FOR LPAREN for_init_decl SEMI expression SEMI expression RPAREN block
+    {
+    char* start = newLabel();
+    char* end = newLabel();
+    emit("label", "", "", start);
+    emit("ifFalseGoTo", $5.name, "", end);
+    // emite code l body ally hwa l b lock;
+    // emit code for incrementing
+    emit("goto", "", "", start);
+    emit("label", "", "", end);
     }
     ;
 
@@ -848,7 +914,13 @@ do_while_loop
 %%
 
 
-
+void printSymbolTable() {
+    printf("\nSymbol Table:\n");
+    for (Symbol* sym = symbolTable; sym != NULL; sym = sym->next) {
+        printf("Name: %s, Type: %s, Constant: %s\n", sym->name, sym->type, sym->isConstant ? "Yes" : "No");
+    }
+   
+}
 int main(int argc, char **argv) {
     if (argc > 1) {
         yyin = fopen(argv[1], "r");
@@ -858,9 +930,12 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (yyparse() == 0){
+    if (yyparse() == 0 && !semanticErrorOccurred){
         printQuads();
+        printSymbolTable();
         return 0;
+    } else if (semanticErrorOccurred) {
+        fprintf(stderr, "Compilation failed due to semantic errors.\n");
     }
 
     return 1;
