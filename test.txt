@@ -1,16 +1,4 @@
-int x = 20;
 
-switch(x){
-    case 2:
-        x = 6;
-        break;
-    case 3:
-        x = 7;
-        break;
-    case 4:
-        x = 70;
-        break;
-    default:
-        x = 9;
-        break;
+for(int i = 0; i < 5; i = i + 1){
+    x = x + 1;
 }

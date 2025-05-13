@@ -240,7 +240,7 @@ void moveTwoToEnd(int n, int x) {
 %type <exprInfo> factor
 %type <exprInfo> primary_expression
 %type <exprInfo> statement
-
+%type <exprInfo> for_init_decl
 
 
 
@@ -636,7 +636,14 @@ loops
     | while_loop
     | do_while_loop
     ;
-
+for_init_decl
+    : type ID ASSIGN expression {
+        insertSymbol($2, currentType, isConst);
+        emit("=", $4.name, "", $2);
+        $$.name = $2;
+        $$.type = currentType;
+    }
+    ;
 for_loop
     : FOR LPAREN expression SEMI {
         char* start = newLabel();
@@ -649,8 +656,6 @@ for_loop
         emit("ifFalseGoTo", $6.name, "", end);
         push(end);
         for_start = quadIndex;
-        printf("Quad index is ");
-        printf("Quad index is %d\n", for_start);
     }
     expression RPAREN block {
         moveTwoToEnd(quadIndex, for_start);
@@ -659,7 +664,7 @@ for_loop
         emit("goto", "", "", start);
         emit("label", "", "", end);
     }
-    | FOR LPAREN INT expression SEMI {
+    | FOR LPAREN for_init_decl SEMI{
         char* start = newLabel();
         char* end = newLabel();
         emit("label", "", "", start);
@@ -667,11 +672,9 @@ for_loop
     }
     expression SEMI {
         char* end = pop();
-        emit("ifFalseGoTo", $7.name, "", end);
+        emit("ifFalseGoTo", $6.name, "", end);
         push(end);
         for_start = quadIndex;
-        printf("Quad index is ");
-        printf("Quad index is %d\n", for_start);
     }
     expression RPAREN block {
         moveTwoToEnd(quadIndex, for_start);       
