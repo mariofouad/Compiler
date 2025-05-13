@@ -671,7 +671,7 @@ primary_expression
                 $$.type = strdup(func->returnType);
             } else {
                 $$.name = newTemp();
-                $$.type = strdup(func->returnType); // Still use return type if known
+                $$.type = strdup(func->returnType);
             }
         }
     }
