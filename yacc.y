@@ -48,7 +48,8 @@ int semanticErrorOccurred = 0;
 int lookup(char* name) {
     Symbol* sym = symbolTable;
     while (sym != NULL) {
-        if (strcmp(sym->name, name) == 0)
+        // Check if name matches AND it's in the current scope or an enclosing scope
+        if (strcmp(sym->name, name) == 0 && sym->scopeLevel <= currentScopeLevel)
             return 1;
         sym = sym->next;
     }
@@ -66,6 +67,7 @@ void insertSymbol(char* name, char* type, int isConst) {
     sym->name = strdup(name);
     sym->type = strdup(type);
     sym->isConstant = isConst;
+    sym->scopeLevel = currentScopeLevel;
     sym->next = symbolTable;
     sym->isInitialized = 0; // Initialize to false for new symbols
     symbolTable = sym;
@@ -591,18 +593,24 @@ expression
         $$ = $1;
     }
     | expression ASSIGN expression {
-    char* lhs_type = getType($1.name);
-    if (lhs_type == NULL) {
-    lhs_type = strdup("unknown"); // Fallback to avoid NULL dereference
-    }
-    if(isConstant($1.name) == 1) {
-        semanticError("Cannot assign to a constant variable");
-    }
-    char* rhs_type = $3.type;
+        if (!lookup($1.name)) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Assignment to undeclared variable '%s'", $1.name);
+            semanticError(errorMsg);
+        }
+        
+        char* lhs_type = getType($1.name);
+        char* rhs_type = $3.type;
 
-    if (strcmp(lhs_type, rhs_type) != 0) {
-        semanticError("Type mismatch in assignment");
-    }
+        // Only check type mismatch if the variable exists (has a type)
+        if (lhs_type != NULL && strcmp(lhs_type, rhs_type) != 0) {
+            semanticError("Type mismatch in assignment");
+        }
+        
+        // Now set a fallback for code generation
+        if (lhs_type == NULL) {
+            lhs_type = strdup("unknown");
+        }
 
     // Check for i = i + 1 or similar
     if (
@@ -630,8 +638,8 @@ expression
         setInitialized($1.name);  // mark as initialized
     }
 
-    $$.name = $1.name;
-    $$.type = lhs_type;
+        $$.name = $1.name;
+        $$.type = lhs_type;
 }
 ;
 
