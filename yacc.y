@@ -560,7 +560,7 @@ for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
             // emite code l body ally hwa l b lock;
             // emit code for incrementing
             emit("goto", "", "", start);
-            emit("label", "", "", "end");
+            emit("label", "", "", end);
             
         }
          | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block
@@ -572,7 +572,7 @@ for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
             // emite code l body ally hwa l b lock;
             // emit code for incrementing
             emit("goto", "", "", start);
-            emit("label", "", "", "end");
+            emit("label", "", "", end);
             }
          ;
 
