@@ -1231,18 +1231,21 @@ while_loop : WHILE LPAREN{
 
 do_while_loop : DO {
         char* start = newLabel();
+        char* end = newLabel();
         emit("label", "", "", start);
-        push(start);
+        push(start); push(end);
+        pushLoopLabels(start, end);
 
     } block WHILE LPAREN expression RPAREN SEMI
     {
-        char* end = newLabel();
+        char* end = pop();
         char* start = pop();
         // emit code for block
         // emit code for condition
         emit("ifFalseGoTo", $6.name, "", end);
         emit("goto", "", "", start);
         emit("label", "", "", end);
+        popLoopLabels();
         $$.name = strdup("");
         $$.type = strdup("void");
     }

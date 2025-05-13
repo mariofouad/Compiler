@@ -1,9 +1,12 @@
-int add(int a, int b) {
-    int result;
-    if (a == 0) {
-        result = b;
-    } else {
-        result = a + b;
-    }
-    return result;
+int main()
+{
+    int a=0;
+    do{
+        if(a == 10){
+            a = a + 5;
+            continue;
+        }
+        a = a + 2;
+    } while(a > 20);
+    return 0;
 }

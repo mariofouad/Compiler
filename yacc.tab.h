@@ -42,54 +42,52 @@
      INT = 258,
      FLOAT = 259,
      ID = 260,
-     STRING = 261,
-     INT_LITERAL = 262,
-     FLOAT_LITERAL = 263,
-     CHAR_LITERAL = 264,
-     STRING_LITERAL = 265,
-     BOOL_LITERAL = 266,
-     IF = 267,
-     ELSE = 268,
-     WHILE = 269,
-     DO = 270,
-     RETURN = 271,
-     BREAK = 272,
-     MOD = 273,
-     NOT = 274,
-     VOID = 275,
-     CONTINUE = 276,
-     ASSIGN = 277,
-     EQ = 278,
-     NEQ = 279,
-     LE = 280,
-     GE = 281,
-     LT = 282,
-     GT = 283,
-     PLUS = 284,
-     MINUS = 285,
-     MUL = 286,
-     DIV = 287,
-     LPAREN = 288,
-     RPAREN = 289,
-     LBRACE = 290,
-     RBRACE = 291,
-     SEMI = 292,
-     COMMA = 293,
-     SWITCH = 294,
-     CASE = 295,
-     DEFAULT = 296,
-     COLON = 297,
-     FOR = 298,
-     AND = 299,
-     OR = 300,
-     CHAR = 301,
-     CONST = 302,
-     DOUBLE = 303,
-     BOOL = 304,
-     SHORT = 305,
-     LONG = 306,
-     UNSIGNED = 307,
-     SIGNED = 308
+     INT_LITERAL = 261,
+     FLOAT_LITERAL = 262,
+     CHAR_LITERAL = 263,
+     BOOL_LITERAL = 264,
+     IF = 265,
+     ELSE = 266,
+     WHILE = 267,
+     DO = 268,
+     RETURN = 269,
+     BREAK = 270,
+     MOD = 271,
+     NOT = 272,
+     VOID = 273,
+     CONTINUE = 274,
+     ASSIGN = 275,
+     EQ = 276,
+     NEQ = 277,
+     LE = 278,
+     GE = 279,
+     LT = 280,
+     GT = 281,
+     PLUS = 282,
+     MINUS = 283,
+     MUL = 284,
+     DIV = 285,
+     LPAREN = 286,
+     RPAREN = 287,
+     LBRACE = 288,
+     RBRACE = 289,
+     SEMI = 290,
+     COMMA = 291,
+     SWITCH = 292,
+     CASE = 293,
+     DEFAULT = 294,
+     COLON = 295,
+     FOR = 296,
+     AND = 297,
+     OR = 298,
+     CHAR = 299,
+     CONST = 300,
+     DOUBLE = 301,
+     BOOL = 302,
+     SHORT = 303,
+     LONG = 304,
+     UNSIGNED = 305,
+     SIGNED = 306
    };
 #endif
 
@@ -100,7 +98,7 @@ typedef union YYSTYPE
 {
 
 /* Line 1676 of yacc.c  */
-#line 471 "yacc.y"
+#line 487 "yacc.y"
 
     int i;
     float f;
@@ -116,7 +114,7 @@ typedef union YYSTYPE
 
 
 /* Line 1676 of yacc.c  */
-#line 120 "yacc.tab.h"
+#line 118 "yacc.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
