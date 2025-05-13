@@ -1,7 +1,7 @@
 %{
     #include <stdio.h>
-    #include <string.h>  // for strdup, strcmp
     #include <stdlib.h>
+    #include <string.h>
     #include <ctype.h>
     #define MAX 1000
     #define MAX_PARAMS 20  // Maximum number of parameters for a function
@@ -88,6 +88,7 @@ void insertSymbol(char* name, char* type, int isConst) {
     sym->scopeLevel = currentScopeLevel;
     sym->next = symbolTable;
     sym->isInitialized = 0; // Initialize to false for new symbols
+    sym->isFunction = 0;
     symbolTable = sym;
 }
 
@@ -497,11 +498,9 @@ char* getCurrentBreakLabel() {
 %token <i> INT
 %token <f> FLOAT
 %token <id> ID
-%token <id> STRING
 %token <i> INT_LITERAL
 %token <f> FLOAT_LITERAL
 %token <c> CHAR_LITERAL
-%token <id> STRING_LITERAL
 %token <i> BOOL_LITERAL
 
 
@@ -600,7 +599,6 @@ type
     | CHAR      { currentType = "char"; }
     | DOUBLE    { currentType = "double"; }
     | BOOL      { currentType = "bool"; }
-    | STRING    { currentType = "string"; }
     | LONG      { currentType = "long"; }
     | SHORT     { currentType = "short"; }
     | UNSIGNED  { currentType = "unsigned"; }
@@ -808,7 +806,7 @@ expression
 
         $$.name = $1.name;
         $$.type = lhs_type;
-}
+}}
 ;
 
 logical_or_expression
@@ -974,12 +972,6 @@ primary_expression
     $$.name = $1;
     $$.type = getType($1);
     $$.isTarget = 0;  // Default: not a target
-    }
-    | STRING_LITERAL {
-    char* temp = newTemp();
-    emit("=", $1, "", temp);
-    $$.name = temp;
-    $$.type = strdup("string");
     }
     | CHAR_LITERAL {
     char val[4]; sprintf(val, "'%c'", $1);
