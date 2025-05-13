@@ -5,8 +5,8 @@ int column = 1;
 
 #include "yacc.tab.h"
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
+#include <stdio.h>
 #define YY_USER_ACTION column += yyleng;
 
 void yyerror(const char *);
@@ -21,7 +21,6 @@ void yyerror(const char *);
 "char"          { return CHAR; }
 "double"        { return DOUBLE; }
 "bool"          { return BOOL; }
-"string"        { return STRING; } 
 "long"          { return LONG; }
 "short"         { return SHORT; }
 "unsigned"      { return UNSIGNED; }
@@ -71,7 +70,6 @@ void yyerror(const char *);
 ":"             { return COLON; }
 
 \'[^\']\'             { yylval.i = yytext[1]; return CHAR_LITERAL; }
-\"([^\\\"]|\\.)*\"    { yylval.id = strdup(yytext); return STRING_LITERAL; }
 [0-9]+"."[0-9]*     { yylval.f = atof(yytext); return FLOAT_LITERAL; }
 [0-9]+              { yylval.i = atoi(yytext); return INT_LITERAL; }
 [a-zA-Z_][a-zA-Z0-9_]* { yylval.id = strdup(yytext); return ID; }

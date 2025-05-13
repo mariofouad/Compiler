@@ -1,7 +1,7 @@
 %{
     #include <stdio.h>
-    #include <string.h>  // for strdup, strcmp
     #include <stdlib.h>
+    #include <string.h>
     #include <ctype.h>
     #define MAX 1000
     #define MAX_PARAMS 20  // Maximum number of parameters for a function
@@ -90,6 +90,7 @@ void insertSymbol(char* name, char* type, int isConst) {
     sym->scopeLevel = currentScopeLevel;
     sym->next = symbolTable;
     sym->isInitialized = 0; // Initialize to false for new symbols
+    sym->isFunction = 0;
     symbolTable = sym;
 }
 
@@ -151,8 +152,25 @@ char* resolveType(char* type1, char* type2) {
         return "int";
     if (strcmp(type1, "char") == 0 && strcmp(type2, "char") == 0)
         return "char";
+    if (strcmp(type1, "bool") == 0 && strcmp(type2, "bool") == 0)
+        return "bool";
+    if ((strcmp(type1, "bool")==0 && strcmp(type2, "int")==0) || (strcmp(type1, "int")==0 && strcmp(type2, "bool")==0))
+        return "bool"; // bool and int can be mixed in some cases
+    
 
     return "unknown"; // add more logic if needed
+}
+int areTypesCompatible(char* expected, char* actual) {
+    if (expected == NULL || actual == NULL) {
+        return 0; // NULL types are not compatible
+    }
+    if (strcmp(expected, actual) == 0) {
+        return 1; // Types are the same
+    }
+    if((strcmp(expected, "int")==0 && strcmp(actual, "bool")==0) || (strcmp(expected, "bool")==0 && strcmp(actual, "int")==0)){
+        return 1; // bool and int can be mixed in some cases
+    }
+    return 0; // Types are not compatible
 }
 
 
@@ -171,7 +189,7 @@ int loopDepth = 0;
 int quadIndex = 0;
 int tempCount = 0;
 int labelCount = 0;
-
+bool fromSwitch = 0;
 char* newLabel() {
     char* name = malloc(10);
     sprintf(name, "L%d", labelCount++);
@@ -281,9 +299,7 @@ void emitCases(CaseLabel* list, char* switchTemp){
         param->isFunction = 0;
         param->next = NULL;
         param->scopeLevel = currentScopeLevel + 1;  // Parameters are in function's scope
-
         param->isInitialized = 1;
-        
         // Add to function's parameter list
         function->parameters[function->paramCount++] = param;
         
@@ -484,11 +500,9 @@ char* getCurrentBreakLabel() {
 %token <i> INT
 %token <f> FLOAT
 %token <id> ID
-%token <id> STRING
 %token <i> INT_LITERAL
 %token <f> FLOAT_LITERAL
 %token <c> CHAR_LITERAL
-%token <id> STRING_LITERAL
 %token <i> BOOL_LITERAL
 
 
@@ -570,7 +584,7 @@ init_declarator: ID   {
     }
     }
   | ID ASSIGN expression {
-    if (strcmp(currentType, $3.type) != 0) {
+    if (!areTypesCompatible(currentType, $3.type)) {
                 char errorMsg[200];
                 sprintf(errorMsg, "Type mismatch in initialization of '%s': expected '%s' but got '%s'", $1, currentType, $3.type);
                 semanticError(errorMsg);
@@ -587,7 +601,6 @@ type
     | CHAR      { currentType = "char"; }
     | DOUBLE    { currentType = "double"; }
     | BOOL      { currentType = "bool"; }
-    | STRING    { currentType = "string"; }
     | LONG      { currentType = "long"; }
     | SHORT     { currentType = "short"; }
     | UNSIGNED  { currentType = "unsigned"; }
@@ -678,7 +691,6 @@ block_item
   : declaration
   | statement
   ;
-
 statement
     : expression SEMI {
         $$ = $1;
@@ -699,10 +711,13 @@ statement
         $$.type = strdup("void");
     }
     | BREAK SEMI {
-        char* breakLabel = getCurrentBreakLabel();
-        emit("goto", "", "", breakLabel);
-        $$.name = strdup("");
-        $$.type = strdup("void");
+        if(!fromSwitch){
+            char* breakLabel = getCurrentBreakLabel();
+            emit("goto", "", "", breakLabel);
+            $$.name = strdup("");
+            $$.type = strdup("void");
+        }
+        fromSwitch = 0;
     }
 | RETURN expression SEMI {
     if (currentFunction) {
@@ -772,7 +787,8 @@ expression
         char* rhs_type = $3.type;
 
         // Only check type mismatch if the variable exists (has a type)
-        if (lhs_type != NULL && strcmp(lhs_type, rhs_type) != 0) {
+        if (lhs_type != NULL && !areTypesCompatible(lhs_type, rhs_type)) {
+        if (lhs_type != NULL && !areTypesCompatible(lhs_type, rhs_type)) {
             semanticError("Type mismatch in assignment");
         }
         
@@ -810,6 +826,7 @@ expression
         $$.name = $1.name;
         $$.type = lhs_type;
 }
+    }
 ;
 
 logical_or_expression
@@ -976,12 +993,6 @@ primary_expression
     $$.type = getType($1);
     $$.isTarget = 0;  // Default: not a target
     }
-    | STRING_LITERAL {
-    char* temp = newTemp();
-    emit("=", $1, "", temp);
-    $$.name = temp;
-    $$.type = strdup("string");
-    }
     | CHAR_LITERAL {
     char val[4]; sprintf(val, "'%c'", $1);
     $$.name = strdup(val);
@@ -1074,22 +1085,26 @@ switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
         $$ = $1;
     }
 };
-
-switch_case : CASE constant COLON {
+break_statement:
+    statement
+    | statement BREAK SEMI;
+switch_case 
+            :CASE constant COLON {
                 char* label = newLabel();
                 emit("label", "", "", label);
                 //emit statement code;
-                printf("Stack length is %d\n", isStackEmpty());
                 push(label);
-
+                fromSwitch = 1;
                 }
-            statement BREAK SEMI{
+            break_statement{
                 char* label = pop();
                 char* end = pop();
                 
                 emit("goto", "", "", end);
                 push(end);
                 $$ = newCaseLabel($2, label);
+                fromSwitch = 0;
+
             }
                 
             | DEFAULT COLON  {
@@ -1097,12 +1112,14 @@ switch_case : CASE constant COLON {
                 emit("label", "", "", label);
                 // emit statement code
                 push(label);
-            }statement BREAK SEMI{
+                fromSwitch = 1;
+            }break_statement{
                 char* label = pop();
                 char* end = pop();
                 emit("goto", "", "", end);
                 $$ = newCaseLabel("default", label);
                 push(end);
+                fromSwitch = 0;
 
             }
             ;
