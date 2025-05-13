@@ -1,12 +1,17 @@
 /* Definitions */
 %{
+int yylineno = 1;
+int column = 1;
+
 #include "yacc.tab.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#define YY_USER_ACTION column += yyleng;
 
 void yyerror(const char *);
 %}
+
 
 /* Regex rules */
 %%
@@ -71,9 +76,12 @@ void yyerror(const char *);
 [0-9]+              { yylval.i = atoi(yytext); return INT_LITERAL; }
 [a-zA-Z_][a-zA-Z0-9_]* { yylval.id = strdup(yytext); return ID; }
 
-[ \t\r\n]+          { /* ignore whitespace */ }
+\n         { yylineno++; column = 1; }
+[ \t\r]+   { /* ignore tabs and spaces */ column += yyleng; }
 
-.                   { fprintf(stderr, "Unknown character: '%c'\n", *yytext); }
+. {
+    fprintf(stderr, "Lexical Error at line %d, column %d: Unknown character '%c'\n", yylineno, column, *yytext);
+}
 
 %%
 
