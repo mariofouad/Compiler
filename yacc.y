@@ -729,15 +729,7 @@ statement
         if (currentFunction) {
             emit("return", "", "", "");
         }
-        if (currentFunction && strcmp(currentFunction->returnType, "void") != 0) {
-            char errorMsg[100];
-            sprintf(errorMsg, "Function '%s' has return type '%s' but returns no value", 
-                    currentFunction->name, currentFunction->returnType);
-            semanticError(errorMsg);
-        }
-        if (currentFunction) {
-            emit("return", "", "", "");
-        }
+        
         $$.name = strdup("");
         $$.type = strdup("void");
     }
@@ -809,6 +801,7 @@ expression
         $$.name = $1.name;
         $$.type = lhs_type;
 }
+    }
 ;
 
 logical_or_expression
