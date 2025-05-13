@@ -26,8 +26,23 @@ int currentScopeLevel = 0;  //Scope level management
 Symbol* functionTable = NULL;   // Function table for storing function symbols
 Symbol* currentFunction = NULL; // Current function being processed
 int currentArgCount = 0;
+int semanticErrorOccurred = 0;
 
 
+
+    // === ERROR HANDLING ===
+
+    extern int yylineno;
+    void semanticError(const char* msg) {
+    fprintf(stderr, "Semantic Error : %s\n",  msg);
+    semanticErrorOccurred = 1;
+}
+    extern char* yytext;
+    extern FILE *yyin;
+    int yylex(void);
+    void yyerror(char* s) {
+    fprintf(stderr, "Syntax Error: %s \n", s);
+}
 
 int lookup(char* name) {
     Symbol* sym = symbolTable;
@@ -41,7 +56,9 @@ int lookup(char* name) {
 
 void insertSymbol(char* name, char* type, int isConst) {
     if (lookup(name)) {
-        semanticError("Variable %s is redeclared", name);
+        char errorMsg[100];
+        sprintf(errorMsg, "Variable '%s' already declared", name);
+        semanticError(errorMsg);
         return;
     }
     Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
@@ -155,18 +172,6 @@ void emitCases(CaseLabel* list, char* switchTemp){
     emit("label", "", "", endLabel);
 }
 
-    // === ERROR HANDLING ===
-
-    extern int yylineno;
-    void semanticError(const char* msg) {
-    fprintf(stderr, "Semantic Error : %s\n",  msg);
-}
-    extern char* yytext;
-    extern FILE *yyin;
-    int yylex(void);
-    void yyerror(char* s) {
-    fprintf(stderr, "Syntax Error: %s \n", s);
-}
 
     // === FUNCTION TABLE MANAGEMENT ===
     Symbol* insertFunction(char* name, char* returnType) {
@@ -359,6 +364,7 @@ void emitCases(CaseLabel* list, char* switchTemp){
 
 
 
+
 %start program
 
 %type <id> constant
@@ -405,6 +411,11 @@ var_list: init_declarator
 
 init_declarator: ID   { insertSymbol($1, currentType, isConst); }
   | ID ASSIGN expression {
+    if (strcmp(currentType, $3.type) != 0) {
+                char errorMsg[200];
+                sprintf(errorMsg, "Type mismatch in initialization of '%s': expected '%s' but got '%s'", $1, currentType, $3.type);
+                semanticError(errorMsg);
+            }
     insertSymbol($1, currentType, isConst);
     emit("=", $3.name, "", $1);
   }
@@ -534,11 +545,10 @@ expression
         $$ = $1;
     }
     | expression ASSIGN expression {
-    if (!lookup($1.name)) {
-        semanticError("Undeclared identifier used in assignment");
-    }
-
     char* lhs_type = getType($1.name);
+    if (lhs_type == NULL) {
+    lhs_type = strdup("unknown"); // Fallback to avoid NULL dereference
+    }
     char* rhs_type = $3.type;
 
     if (strcmp(lhs_type, rhs_type) != 0) {
@@ -704,7 +714,7 @@ factor
 primary_expression
     : ID { 
     if (!lookup($1)) {
-        semanticError("Undeclared identifier used in expression\n");
+        semanticError("Undeclared identifier used in expression");
     }
     $$.name = $1;
     $$.type = getType($1);
@@ -843,6 +853,15 @@ loops
     }
     ;
 
+for_init_decl
+    : type ID ASSIGN expression {
+        insertSymbol($2, currentType, isConst);
+        emit("=", $4.name, "", $2);
+        $$.name = $2;
+        $$.type = currentType;
+    }
+    ;
+
 for_loop 
     : FOR LPAREN expression SEMI expression SEMI expression RPAREN block {
         char* start = newLabel();
@@ -854,15 +873,16 @@ for_loop
         $$.name = strdup("");
         $$.type = strdup("void");
     }
-    | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block {
-        char* start = newLabel();
-        char* end = newLabel();
-        emit("label", "", "", start);
-        emit("ifFalseGoTo", $6.name, "", end);
-        emit("goto", "", "", start);
-        emit("label", "", "", end);
-        $$.name = strdup("");
-        $$.type = strdup("void");
+    | FOR LPAREN for_init_decl SEMI expression SEMI expression RPAREN block
+    {
+    char* start = newLabel();
+    char* end = newLabel();
+    emit("label", "", "", start);
+    emit("ifFalseGoTo", $5.name, "", end);
+    // emite code l body ally hwa l b lock;
+    // emit code for incrementing
+    emit("goto", "", "", start);
+    emit("label", "", "", end);
     }
     ;
 
@@ -910,10 +930,12 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (yyparse() == 0){
+    if (yyparse() == 0 && !semanticErrorOccurred){
         printQuads();
         printSymbolTable();
         return 0;
+    } else if (semanticErrorOccurred) {
+        fprintf(stderr, "Compilation failed due to semantic errors.\n");
     }
 
     return 1;
