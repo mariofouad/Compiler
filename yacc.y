@@ -14,6 +14,7 @@ typedef struct Symbol {
 
 Symbol* symbolTable = NULL;
 char* currentType = NULL;
+int isConst = 0;
 
 void insertSymbol(char* name, char* type, int isConst) {
     Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
@@ -47,7 +48,7 @@ char* resolveType(char* type1, char* type2) {
     if (type1 == NULL || type2 == NULL) {
     printf("Warning: NULL type encountered in resolveType\n");
     return "unknown";
-}
+    }
 
     if (strcmp(type1, "float") == 0 || strcmp(type2, "float") == 0)
         return "float";
@@ -213,31 +214,37 @@ external
   ;
 
 declaration
-  : type var_list SEMI
-  | const_decl
+  : type var_list SEMI  {isConst = 0;}
+  | const_decl          {isConst = 0;}
   ;
 
-const_decl : CONST type var_list SEMI ;
+const_decl : CONST type var_list SEMI {
+    isConst = 1;
+}
+;
 
 var_list: init_declarator
   | var_list COMMA init_declarator
   ;
 
-init_declarator: ID   //need to insert into symbol table
-  | ID ASSIGN expression 
+init_declarator: ID   { insertSymbol($1, currentType, isConst); }
+  | ID ASSIGN expression {
+    insertSymbol($1, currentType, isConst);
+    emit("=", $3.name, "", $1);
+  }
   ;
 
 type
-    : INT 
-    | FLOAT 
-    | CHAR 
-    | DOUBLE 
-    | BOOL 
-    | STRING 
-    | LONG 
-    | SHORT 
-    | UNSIGNED 
-    | SIGNED 
+    : INT       { currentType = "int"; }
+    | FLOAT     { currentType = "float"; }
+    | CHAR      { currentType = "char"; }
+    | DOUBLE    { currentType = "double"; }
+    | BOOL      { currentType = "bool"; }
+    | STRING    { currentType = "string"; }
+    | LONG      { currentType = "long"; }
+    | SHORT     { currentType = "short"; }
+    | UNSIGNED  { currentType = "unsigned"; }
+    | SIGNED    { currentType = "signed"; }
     ;
 
 function_definition
@@ -424,6 +431,7 @@ factor
     | LPAREN expression RPAREN {
         $$ = $2;
     }
+    | MINUS factor // negative (-4)
     ;
 
 primary_expression
