@@ -1,14 +1,8 @@
-int add(int a, int b) {
-    return a + b;
-}
-
-float multiply(float x, float y) {
-    return x * y;
-}
-
 int main() {
-    int result = add(5, 3);
-    float product = multiply(2.5, 3.0);
+    {
+        int x;
+    }
+    x = 0;
     
     return 0;
 }
