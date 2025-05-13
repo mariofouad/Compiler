@@ -1,1 +1,7 @@
 yacc.output
+lex.yy.c
+yacc.output
+yacc.tab.c
+yacc.tab.h
+compiler.exe
+test.txt
