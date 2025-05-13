@@ -1,5 +1,6 @@
 %{
     #include <stdio.h>
+    #include <string.h>  // for strdup, strcmp
     #include <stdlib.h>
     #define MAX 1000
 
@@ -13,6 +14,7 @@ typedef struct Symbol {
 
 Symbol* symbolTable = NULL;
 char* currentType = NULL;
+int isConst = 0;
 
 void insertSymbol(char* name, char* type, int isConst) {
     Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
@@ -32,6 +34,33 @@ int lookup(char* name) {
     }
     return 0;
 }
+char* getType(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0)
+            return sym->type;
+        sym = sym->next;
+    }
+    return NULL;  // not found
+}
+
+char* resolveType(char* type1, char* type2) {
+    if (type1 == NULL || type2 == NULL) {
+    printf("Warning: NULL type encountered in resolveType\n");
+    return "unknown";
+    }
+
+    if (strcmp(type1, "float") == 0 || strcmp(type2, "float") == 0)
+        return "float";
+    if (strcmp(type1, "int") == 0 && strcmp(type2, "int") == 0)
+        return "int";
+    if (strcmp(type1, "char") == 0 && strcmp(type2, "char") == 0)
+        return "char";
+
+    return "unknown"; // add more logic if needed
+}
+
+
 
 // === INTERMEDIATE CODE ===
 typedef struct {
@@ -69,19 +98,50 @@ void emit(char* op, char* arg1, char* arg2, char* result) {
 
 void printQuads() {
     printf("\nGenerated Quadruples:\n");
-    for (int i = 0; i < quadCount; i++) {
+    for (int i = 0; i < quadIndex; i++) {
         printf("%d: (%s, %s, %s, %s)\n", i, quads[i].op, quads[i].arg1, quads[i].arg2, quads[i].result);
     }
 }
+// Linked List representation of Cases
+typedef struct CaseLabel{
+    char* value;
+    char* label;
+    struct CaseLabel* next;
+} CaseLabel;
+CaseLabel* newCaseLabel(char* value, char* label){
+    CaseLabel* node = malloc(sizeof(CaseLabel));
+    node->value = strdup(value);
+    node->label = strdup(label);
+    node->next = NULL;
+    return node;
+}
+void emitCases(CaseLabel* list, char* switchTemp){
+    char* endLabel = newLabel();
+    CaseLabel* curr = list;
+    char* defaultLabel = NULL;
+    while(curr){
+        if(strcmp(curr->value, "default") == 0){
+            defaultLabel = curr->label;
+        }else{
+            emit("ifEqual", switchTemp, curr->value, curr->label);
+        }
+        curr = curr->next;
+    }
+    if(defaultLabel){
+        emit("goto", "", "", defaultLabel);
+    }else{
+        emit("goto", "", "", endLabel);
+    }
 
-
+    emit("label", "", "", endLabel);
+}
     // === ERROR HANDLING ===
     extern int yylineno;
     extern char* yytext;
     extern FILE *yyin;
     int yylex(void);
     void yyerror(char* s) {
-    fprintf(stderr, "Syntax Error: %s at line %d near '%s'\n", s, yylineno, yytext);
+    fprintf(stderr, "Syntax Error: %s \n", s);
 }%}
 
 %union{
@@ -89,6 +149,11 @@ void printQuads() {
     float f;
     char c;
     char* id;
+    struct CaseLabel* caseLabel;
+    struct {
+        char* name;  // name of the result  (e.g., temp variable name)
+        char* type;  // type of the result (e.g., "int", "float")
+    } exprInfo;     // for full expression information
 }
 
 %token <i> INT
@@ -101,6 +166,7 @@ void printQuads() {
 %token <id> STRING_LITERAL
 %token <i> BOOL_LITERAL
 
+
 %token IF ELSE WHILE DO RETURN BREAK MOD NOT VOID CONTINUE
 %token ASSIGN EQ NEQ LE GE LT GT
 %token PLUS MINUS MUL DIV
@@ -111,7 +177,24 @@ void printQuads() {
 %right ASSIGN
 %left COMMA
 
+%type <exprInfo> expression
+%type <exprInfo> logical_or_expression
+%type <exprInfo> logical_and_expression
+%type <exprInfo> comparison_expression
+%type <exprInfo> mathematical_expression
+%type <exprInfo> term
+%type <exprInfo> factor
+%type <exprInfo> primary_expression
+%type <exprInfo> statement
+
+
+
+
 %start program
+
+%type <id> constant
+%type <caseLabel> switch_case
+%type <caseLabel> switch_case_list
 
 %%
 
@@ -127,26 +210,42 @@ external_list
 external
   : function_definition
   | declaration
+  | statement
   ;
 
 declaration
-  : type var_list SEMI
-  | const_decl
+  : type var_list SEMI  {isConst = 0;}
+  | const_decl          {isConst = 0;}
   ;
 
-const_decl : CONST type var_list SEMI ;
+const_decl : CONST type var_list SEMI {
+    isConst = 1;
+}
+;
 
 var_list: init_declarator
   | var_list COMMA init_declarator
   ;
 
-init_declarator: ID
-  | ID ASSIGN expression
+init_declarator: ID   { insertSymbol($1, currentType, isConst); }
+  | ID ASSIGN expression {
+    insertSymbol($1, currentType, isConst);
+    emit("=", $3.name, "", $1);
+  }
   ;
 
 type
-  : INT | FLOAT | CHAR | DOUBLE | BOOL | STRING | LONG | SHORT | UNSIGNED | SIGNED
-  ;
+    : INT       { currentType = "int"; }
+    | FLOAT     { currentType = "float"; }
+    | CHAR      { currentType = "char"; }
+    | DOUBLE    { currentType = "double"; }
+    | BOOL      { currentType = "bool"; }
+    | STRING    { currentType = "string"; }
+    | LONG      { currentType = "long"; }
+    | SHORT     { currentType = "short"; }
+    | UNSIGNED  { currentType = "unsigned"; }
+    | SIGNED    { currentType = "signed"; }
+    ;
 
 function_definition
     : type ID LPAREN parameter_list RPAREN block
@@ -187,7 +286,9 @@ block_item
   ;
 
 statement
-    : expression SEMI
+    : expression SEMI {
+        $$ = $1;
+    }
     | conditional_statement
     | loops
     | block
@@ -198,75 +299,250 @@ statement
     ;
 
 expression
-    : logical_or_expression
-    | expression ASSIGN expression
+    : logical_or_expression {
+        $$ = $1;
+    }
+    | expression ASSIGN expression {
+        // need to check if the variable is declared and if the types match
+
+        char* lhs_type = getType($1.name);
+
+        emit("=", $3.name, "", $1.name);
+        $$.name = $1.name;
+        $$.type = lhs_type;
+    }
     ;
 
 logical_or_expression
-    : logical_and_expression
-    | logical_or_expression OR logical_and_expression
+    : logical_and_expression {
+        $$ = $1;
+    }
+    | logical_or_expression OR logical_and_expression {
+        char* temp = newTemp();
+        emit("||", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = strdup("bool");  // result of logical OR is always bool
+    }
     ;
 
 logical_and_expression
-    : comparison_expression
-    | logical_and_expression AND comparison_expression
+    : comparison_expression {
+        $$ = $1;
+    }
+    | logical_and_expression AND comparison_expression {
+        char* temp = newTemp();
+        emit("&&", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = strdup("bool");  
+    }
     ;
 
 comparison_expression
-    : mathematical_expression
-    | comparison_expression EQ mathematical_expression
-    | comparison_expression NEQ mathematical_expression
-    | comparison_expression LT mathematical_expression
-    | comparison_expression GT mathematical_expression
-    | comparison_expression LE mathematical_expression
-    | comparison_expression GE mathematical_expression
+    : mathematical_expression {
+        $$ = $1;
+    }
+    | comparison_expression EQ mathematical_expression {
+        char* temp = newTemp();
+        emit("==", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = strdup("bool");
+    }
+    | comparison_expression NEQ mathematical_expression {
+        char* temp = newTemp();
+        emit("!=", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = strdup("bool");
+    }
+    | comparison_expression LT mathematical_expression {
+        char* temp = newTemp();
+        emit("<", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = strdup("bool");
+    }
+    | comparison_expression GT mathematical_expression {
+        char* temp = newTemp();
+        emit(">", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = strdup("bool");
+    }
+    | comparison_expression LE mathematical_expression {
+        char* temp = newTemp();
+        emit("<=", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = strdup("bool");
+    }
+    | comparison_expression GE mathematical_expression {
+        char* temp = newTemp();
+        emit(">=", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = strdup("bool");
+    }
     ;
 
 mathematical_expression
-    : term
-    | mathematical_expression PLUS term
-    | mathematical_expression MINUS term
-    ;
+    : term {
+        $$ = $1;
+    }
+    | mathematical_expression PLUS term {
+        char* temp = newTemp();
+        emit("+", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = resolveType($1.type, $3.type);  
+    }
+    | mathematical_expression MINUS term {
+        char* temp = newTemp();
+        emit("-", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = resolveType($1.type, $3.type);
+    }
+
+
 
 term
-    : term MUL factor
-    | term DIV factor
-    | term MOD factor
-    | factor
+    : term MUL factor {
+        char* temp = newTemp();
+        emit("*", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = resolveType($1.type, $3.type);
+    }
+    | term DIV factor {
+        char* temp = newTemp();
+        emit("/", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = resolveType($1.type, $3.type);
+    }
+    | term MOD factor {
+        char* temp = newTemp();
+        emit("%", $1.name, $3.name, temp);
+        $$.name = temp;
+        $$.type = resolveType($1.type, $3.type);
+    }
+    | factor {$$=$1;}
     ;
 
 factor
-    : primary_expression
-    | NOT factor
-    | LPAREN expression RPAREN
+    : primary_expression {$$=$1;}
+    | NOT factor {
+        char* temp = newTemp();
+        emit("!", $2.name, "", temp);
+        $$.name = temp;
+        $$.type = $2.type; // here type remains the same
+    }
+    | LPAREN expression RPAREN {
+        $$ = $2;
+    }
+    | MINUS factor // negative (-4)
     ;
 
 primary_expression
-    : ID
-    | STRING_LITERAL
-    | CHAR_LITERAL
-    | FLOAT_LITERAL
-    | INT_LITERAL
-    | BOOL_LITERAL
-    | ID LPAREN argument_list RPAREN
+    : ID {
+    // need to check if the variable is declared 
+    $$.name = $1;
+    $$.type = getType($1);
+    }
+    | STRING_LITERAL {
+    char* temp = newTemp();
+    emit("=", $1, "", temp);
+    $$.name = temp;
+    $$.type = strdup("string");
+    }
+    | CHAR_LITERAL {
+    char val[4]; sprintf(val, "'%c'", $1);
+    $$.name = strdup(val);
+    $$.type = strdup("char");
+    }
+    | FLOAT_LITERAL {
+    char val[20]; sprintf(val, "%f", $1);
+    $$.name = strdup(val);
+    $$.type = strdup("float");
+    }
+    | INT_LITERAL {
+    char val[20]; sprintf(val, "%d", $1);
+    $$.name = strdup(val);
+    $$.type = strdup("int");
+    }
+    | BOOL_LITERAL {
+    char val[10]; sprintf(val, "%d", $1);
+    $$.name = strdup(val);
+    $$.type = strdup("bool");
+    }
+    | ID LPAREN argument_list RPAREN {
+    // need to check if the function is declared
+    char* temp = newTemp();
+    emit("CALL", $1, "", temp);
+    $$.name = temp;
+    $$.type = getType($1); // assuming function return type is stored in symbol table 
+    }
 
     ;
-
-conditional_statement
-    : IF LPAREN expression RPAREN block
-    | IF LPAREN expression RPAREN block ELSE block
+    conditional_statement
+        : IF LPAREN expression RPAREN block {
+            char* endLabel = newLabel();
+            emit("ifFalseGoTo", $3.name, "", endLabel);
+            // Emit code for the block
+            emit("label", "", "", endLabel);
+        }
+        | IF LPAREN expression RPAREN block ELSE block {
+            char* endLabel = newLabel();
+            char* elseLabel = newLabel();
+            emit("ifFalseGoTo", $3.name, "", elseLabel);
+            // Emit code for the true block ($5)
+            emit("goto", "", "", endLabel);
+            emit("label", "", "", elseLabel);
+            // Emit code for the else block ($7)
+            emit("label", "", "", endLabel);
+        }
     | switch_statement
     ;
 
-switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE ;
+switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
+    // if expression is true
+    char* switchTemp = newTemp();
+    emit("assign", $3.name, "", switchTemp);
+    emitCases($6, switchTemp);           
+};
 
-switch_case_list : /* empty */ | switch_case_list switch_case ;
+switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
+    CaseLabel* q = $1;
+    if(!q) $$ = $2;
+    else{
+        while(q->next) q = q->next;
+        q->next = $2;
+        $$ = $1;
+    }
+};
 
-switch_case : CASE constant COLON statement
-            | DEFAULT COLON statement
+switch_case : CASE constant COLON statement{
+                char* label = newLabel();
+                emit("label", "", "", label);
+                //emit statement code;
+                $$ = newCaseLabel($2, label);
+}
+            | DEFAULT COLON statement {
+                char* label = newLabel();
+                emit("label", "", "", label);
+                // emit statement code
+                $$ = newCaseLabel("default", label);
+            }
             ;
 
-constant : INT_LITERAL | FLOAT_LITERAL | ID ;
+constant : INT_LITERAL {
+    char buffer[20];
+    sprintf(buffer, "%d", $1);
+    $$ = strdup(buffer);
+}
+| FLOAT_LITERAL {
+    char buffer[20];
+    sprintf(buffer, "%f", $1);
+    $$ = strdup(buffer);
+}
+| ID {
+    if(!lookup($1)){
+        yyerror("Undeclared identifier used as a constant for switch\n");
+    }
+    $$ = strdup($1);
+}
+;
 
 loops
     : for_loop
@@ -275,19 +551,59 @@ loops
     ;
 
 for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
-         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block  
+        {
+            char* start = newLabel();
+            char* end = newLabel();
+            // emit code related to init
+            emit("label", "", "", start);
+            emit("ifFalseGoTo", $5.name, "", end);
+            // emite code l body ally hwa l b lock;
+            // emit code for incrementing
+            emit("goto", "", "", start);
+            emit("label", "", "", end);
+            
+        }
+         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block
+         {
+            char* start = newLabel();
+            char* end = newLabel();
+            emit("label", "", "", start);
+            emit("ifFalseGoTo", $6.name, "", end);
+            // emite code l body ally hwa l b lock;
+            // emit code for incrementing
+            emit("goto", "", "", start);
+            emit("label", "", "", end);
+            }
          ;
 
-while_loop : WHILE LPAREN expression RPAREN block ;
+while_loop : WHILE LPAREN expression RPAREN block {
+    char* start = newLabel();
+    char* end = newLabel();
+    // emit condition expression
+    emit("label", "", "", start);
+    emit("ifFalseGoTo", $3.name, "", end);
+    // body
+    emit("goto", "", "", start);
+    emit("label", "", "", end);
+};
 
-do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI ;
+do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI
+    {
+        char* start = newLabel();
+        char* end = newLabel();
+        emit("label", "", "", start);
+
+        // emit code for block
+        // emit code for condition
+        emit("ifFalseGoTo", $5.name, "", end);
+        emit("goto", "", "", start);
+        emit("label", "", "", end);
+    }
+ ;
 
 %%
 
-void yyerror(char *s) {
-    fprintf(stderr, "%s\n", s);
-    exit(0);
-}
+
 
 int main(int argc, char **argv) {
     if (argc > 1) {

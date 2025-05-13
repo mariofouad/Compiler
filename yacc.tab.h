@@ -100,17 +100,22 @@ typedef union YYSTYPE
 {
 
 /* Line 1676 of yacc.c  */
-#line 9 "yacc.y"
+#line 147 "yacc.y"
 
     int i;
     float f;
     char c;
     char* id;
+    struct CaseLabel* caseLabel;
+    struct {
+        char* name;  // name of the result  (e.g., temp variable name)
+        char* type;  // type of the result (e.g., "int", "float")
+    } exprInfo;     // for full expression information
 
 
 
 /* Line 1676 of yacc.c  */
-#line 114 "yacc.tab.h"
+#line 119 "yacc.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
