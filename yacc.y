@@ -351,6 +351,13 @@ void emitCases(CaseLabel* list, char* switchTemp){
 %type <id> constant
 %type <caseLabel> switch_case
 %type <caseLabel> switch_case_list
+%type <exprInfo> conditional_statement
+%type <exprInfo> loops
+%type <exprInfo> block
+%type <exprInfo> for_loop
+%type <exprInfo> while_loop
+%type <exprInfo> do_while_loop
+%type <exprInfo> switch_statement
 
 %%
 
@@ -462,6 +469,8 @@ block
         enterScope();
     } block_items RBRACE {
         exitScope();
+        $$.name = strdup("");
+        $$.type = strdup("void");
     }
     ;
 
@@ -479,14 +488,33 @@ statement
     : expression SEMI {
         $$ = $1;
     }
-    | conditional_statement
-    | loops
-    | block
-    | CONTINUE SEMI
-    | BREAK SEMI
-    | RETURN expression SEMI
-    | RETURN SEMI
+    | conditional_statement {
+        $$ = $1;
+    }
+    | loops {
+        $$ = $1;
+    }
+    | block {
+        $$ = $1;
+    }
+    | CONTINUE SEMI {
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    | BREAK SEMI {
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    | RETURN expression SEMI {
+        $$.name = $2.name;
+        $$.type = $2.type;
+    }
+    | RETURN SEMI {
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
     ;
+
 
 expression
     : logical_or_expression {
@@ -616,7 +644,7 @@ factor
         char* temp = newTemp();
         emit("!", $2.name, "", temp);
         $$.name = temp;
-        $$.type = $2.type; // here type remains the same
+        $$.type = $2.type;
     }
     | LPAREN expression RPAREN {
         $$ = $2;
@@ -682,32 +710,38 @@ primary_expression
     }
     ;
     
-    conditional_statement
-        : IF LPAREN expression RPAREN block {
-            char* endLabel = newLabel();
-            emit("ifFalseGoTo", $3.name, "", endLabel);
-            // Emit code for the block
-            emit("label", "", "", endLabel);
-        }
-        | IF LPAREN expression RPAREN block ELSE block {
-            char* endLabel = newLabel();
-            char* elseLabel = newLabel();
-            emit("ifFalseGoTo", $3.name, "", elseLabel);
-            // Emit code for the true block ($5)
-            emit("goto", "", "", endLabel);
-            emit("label", "", "", elseLabel);
-            // Emit code for the else block ($7)
-            emit("label", "", "", endLabel);
-        }
-    | switch_statement
+conditional_statement
+    : IF LPAREN expression RPAREN block {
+        char* endLabel = newLabel();
+        emit("ifFalseGoTo", $3.name, "", endLabel);
+        emit("label", "", "", endLabel);
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    | IF LPAREN expression RPAREN block ELSE block {
+        char* endLabel = newLabel();
+        char* elseLabel = newLabel();
+        emit("ifFalseGoTo", $3.name, "", elseLabel);
+        emit("goto", "", "", endLabel);
+        emit("label", "", "", elseLabel);
+        emit("label", "", "", endLabel);
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    | switch_statement {
+        $$ = $1;
+    }
     ;
 
-switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
-    // if expression is true
-    char* switchTemp = newTemp();
-    emit("assign", $3.name, "", switchTemp);
-    emitCases($6, switchTemp);           
-};
+switch_statement 
+    : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
+        char* switchTemp = newTemp();
+        emit("assign", $3.name, "", switchTemp);
+        emitCases($6, switchTemp);
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    ;
 
 switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
     CaseLabel* q = $1;
@@ -752,62 +786,65 @@ constant : INT_LITERAL {
 ;
 
 loops
-    : for_loop
-    | while_loop
-    | do_while_loop
+    : for_loop {
+        $$ = $1;
+    }
+    | while_loop {
+        $$ = $1;
+    }
+    | do_while_loop {
+        $$ = $1;
+    }
     ;
 
-for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
-        {
-            char* start = newLabel();
-            char* end = newLabel();
-            // emit code related to init
-            emit("label", "", "", start);
-            emit("ifFalseGoTo", $5.name, "", end);
-            // emite code l body ally hwa l b lock;
-            // emit code for incrementing
-            emit("goto", "", "", start);
-            emit("label", "", "", end);
-            
-        }
-         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block
-         {
-            char* start = newLabel();
-            char* end = newLabel();
-            emit("label", "", "", start);
-            emit("ifFalseGoTo", $6.name, "", end);
-            // emite code l body ally hwa l b lock;
-            // emit code for incrementing
-            emit("goto", "", "", start);
-            emit("label", "", "", end);
-            }
-         ;
-
-while_loop : WHILE LPAREN expression RPAREN block {
-    char* start = newLabel();
-    char* end = newLabel();
-    // emit condition expression
-    emit("label", "", "", start);
-    emit("ifFalseGoTo", $3.name, "", end);
-    // body
-    emit("goto", "", "", start);
-    emit("label", "", "", end);
-};
-
-do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI
-    {
+for_loop 
+    : FOR LPAREN expression SEMI expression SEMI expression RPAREN block {
         char* start = newLabel();
         char* end = newLabel();
         emit("label", "", "", start);
-
-        // emit code for block
-        // emit code for condition
         emit("ifFalseGoTo", $5.name, "", end);
         emit("goto", "", "", start);
         emit("label", "", "", end);
+        $$.name = strdup("");
+        $$.type = strdup("void");
     }
- ;
+    | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block {
+        char* start = newLabel();
+        char* end = newLabel();
+        emit("label", "", "", start);
+        emit("ifFalseGoTo", $6.name, "", end);
+        emit("goto", "", "", start);
+        emit("label", "", "", end);
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    ;
 
+while_loop 
+    : WHILE LPAREN expression RPAREN block {
+        char* start = newLabel();
+        char* end = newLabel();
+        emit("label", "", "", start);
+        emit("ifFalseGoTo", $3.name, "", end);
+        emit("goto", "", "", start);
+        emit("label", "", "", end);
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    ;
+
+do_while_loop 
+    : DO block WHILE LPAREN expression RPAREN SEMI {
+        char* start = newLabel();
+        char* end = newLabel();
+        emit("label", "", "", start);
+        emit("ifFalseGoTo", $5.name, "", end);
+        emit("goto", "", "", start);
+        emit("label", "", "", end);
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    ;
 %%
 
 
