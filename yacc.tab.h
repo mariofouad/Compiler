@@ -100,7 +100,7 @@ typedef union YYSTYPE
 {
 
 /* Line 1676 of yacc.c  */
-#line 158 "yacc.y"
+#line 301 "yacc.y"
 
     int i;
     float f;
