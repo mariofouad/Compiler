@@ -1,12 +1,16 @@
 int x = 20;
 
-if(x > 5){
-    x = x - 5;
-}else{
-    x = x + 5;
-    if(x > 5){
-        x = x + 3;
-    }else{
-        x = x + 20;
-    }
+switch(x){
+    case 2:
+        x = 6;
+        break;
+    case 3:
+        x = 7;
+        break;
+    case 4:
+        x = 70;
+        break;
+    default:
+        x = 9;
+        break;
 }

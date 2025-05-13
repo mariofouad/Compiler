@@ -118,26 +118,7 @@ CaseLabel* newCaseLabel(char* value, char* label){
     node->next = NULL;
     return node;
 }
-void emitCases(CaseLabel* list, char* switchTemp){
-    char* endLabel = newLabel();
-    CaseLabel* curr = list;
-    char* defaultLabel = NULL;
-    while(curr){
-        if(strcmp(curr->value, "default") == 0){
-            defaultLabel = curr->label;
-        }else{
-            emit("ifEqual", switchTemp, curr->value, curr->label);
-        }
-        curr = curr->next;
-    }
-    if(defaultLabel){
-        emit("goto", "", "", defaultLabel);
-    }else{
-        emit("goto", "", "", endLabel);
-    }
 
-    emit("label", "", "", endLabel);
-}
 // Stack structure for labels
 typedef struct {
     char labels[MAX_STACK_SIZE][LABEL_SIZE]; // Array to hold label strings
@@ -173,7 +154,23 @@ char* pop() {
         return NULL;
     }
 }
+void emitCases(CaseLabel* list, char* switchTemp){
 
+    CaseLabel* curr = list;
+    char* defaultLabel = NULL;
+    while(curr){
+        if(strcmp(curr->value, "default") == 0){
+            defaultLabel = curr->label;
+        }else{
+            emit("ifEqualGoTo", switchTemp, curr->value, curr->label);
+        }
+        curr = curr->next;
+    }
+    if(defaultLabel){
+        emit("goto", "", "", defaultLabel);
+    }
+
+}
 void moveTwoToEnd(int n, int x) {
     if (x < 0 || x >= n - 1) {
         printf("Invalid position\n");
@@ -562,11 +559,16 @@ optional_else
     }
     ;
 
-switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
+switch_statement : SWITCH {
+    char* switchEndLabel = newLabel();
+    push(switchEndLabel);
+}LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
     // if expression is true
     char* switchTemp = newTemp();
-    emit("assign", $3.name, "", switchTemp);
-    emitCases($6, switchTemp);           
+    emit("=", $4.name, "", switchTemp);
+    emitCases($7, switchTemp);
+    char* switchEndLabel = pop();
+    emit("label", "", "", switchEndLabel);           
 };
 
 switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
@@ -579,17 +581,35 @@ switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
     }
 };
 
-switch_case : CASE constant COLON statement{
+switch_case : CASE constant COLON {
                 char* label = newLabel();
                 emit("label", "", "", label);
                 //emit statement code;
+                printf("Stack length is %d\n", isStackEmpty());
+                push(label);
+
+                }
+            statement BREAK SEMI{
+                char* label = pop();
+                char* end = pop();
+                
+                emit("goto", "", "", end);
+                push(end);
                 $$ = newCaseLabel($2, label);
-}
-            | DEFAULT COLON statement {
+            }
+                
+            | DEFAULT COLON  {
                 char* label = newLabel();
                 emit("label", "", "", label);
                 // emit statement code
+                push(label);
+            }statement BREAK SEMI{
+                char* label = pop();
+                char* end = pop();
+                emit("goto", "", "", end);
                 $$ = newCaseLabel("default", label);
+                push(end);
+
             }
             ;
 
