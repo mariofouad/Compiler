@@ -50,7 +50,8 @@ int semanticErrorOccurred = 0;
 int lookup(char* name) {
     Symbol* sym = symbolTable;
     while (sym != NULL) {
-        if (strcmp(sym->name, name) == 0)
+        // Check if name matches AND it's in the current scope or an enclosing scope
+        if (strcmp(sym->name, name) == 0 && sym->scopeLevel <= currentScopeLevel)
             return 1;
         sym = sym->next;
     }
@@ -68,6 +69,7 @@ void insertSymbol(char* name, char* type, int isConst) {
     sym->name = strdup(name);
     sym->type = strdup(type);
     sym->isConstant = isConst;
+    sym->scopeLevel = currentScopeLevel;
     sym->next = symbolTable;
     symbolTable = sym;
 }
@@ -595,42 +597,51 @@ expression
         $$ = $1;
     }
     | expression ASSIGN expression {
-    char* lhs_type = getType($1.name);
-    if (lhs_type == NULL) {
-    lhs_type = strdup("unknown"); // Fallback to avoid NULL dereference
-    }
-    char* rhs_type = $3.type;
+        if (!lookup($1.name)) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Assignment to undeclared variable '%s'", $1.name);
+            semanticError(errorMsg);
+        }
+        
+        char* lhs_type = getType($1.name);
+        char* rhs_type = $3.type;
 
-    if (strcmp(lhs_type, rhs_type) != 0) {
-        semanticError("Type mismatch in assignment");
-    }
+        // Only check type mismatch if the variable exists (has a type)
+        if (lhs_type != NULL && strcmp(lhs_type, rhs_type) != 0) {
+            semanticError("Type mismatch in assignment");
+        }
+        
+        // Now set a fallback for code generation
+        if (lhs_type == NULL) {
+            lhs_type = strdup("unknown");
+        }
 
-    // Check for i = i + 1 or similar
-    if (
-        $3.name[0] == 't' &&  // it's a temp
-        quadIndex >= 1 &&
-        (
-            (strcmp(quads[quadIndex - 1].op, "+") == 0 ||
-             strcmp(quads[quadIndex - 1].op, "-") == 0 ||
-             strcmp(quads[quadIndex - 1].op, "*") == 0 ||
-             strcmp(quads[quadIndex - 1].op, "/") == 0)
-        ) &&
-        strcmp(quads[quadIndex - 1].result, $3.name) == 0 &&
-        strcmp(quads[quadIndex - 1].arg1, $1.name) == 0
-    ) {
-        // Overwrite previous temp op with compound assignment
-        char compound[4];
-        sprintf(compound, "%s=", quads[quadIndex - 1].op);
-        strcpy(quads[quadIndex - 1].op, compound);
-        strcpy(quads[quadIndex - 1].result, $1.name);
-        quadIndex--;  // remove redundant temp result
-        emit(compound, $1.name, quads[quadIndex].arg2, $1.name);  // regenerate as compound
-    } else {
-        emit("=", $3.name, "", $1.name);
-    }
+        // Check for i = i + 1 or similar
+        if (
+            $3.name[0] == 't' &&  // it's a temp
+            quadIndex >= 1 &&
+            (
+                (strcmp(quads[quadIndex - 1].op, "+") == 0 ||
+                strcmp(quads[quadIndex - 1].op, "-") == 0 ||
+                strcmp(quads[quadIndex - 1].op, "*") == 0 ||
+                strcmp(quads[quadIndex - 1].op, "/") == 0)
+            ) &&
+            strcmp(quads[quadIndex - 1].result, $3.name) == 0 &&
+            strcmp(quads[quadIndex - 1].arg1, $1.name) == 0
+        ) {
+            // Overwrite previous temp op with compound assignment
+            char compound[4];
+            sprintf(compound, "%s=", quads[quadIndex - 1].op);
+            strcpy(quads[quadIndex - 1].op, compound);
+            strcpy(quads[quadIndex - 1].result, $1.name);
+            quadIndex--;  // remove redundant temp result
+            emit(compound, $1.name, quads[quadIndex].arg2, $1.name);  // regenerate as compound
+        } else {
+            emit("=", $3.name, "", $1.name);
+        }
 
-    $$.name = $1.name;
-    $$.type = lhs_type;
+        $$.name = $1.name;
+        $$.type = lhs_type;
 }
 ;
 
