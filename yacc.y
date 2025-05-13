@@ -6,7 +6,8 @@
     #define MAX_PARAMS 20  // Maximum number of parameters for a function
     #define MAX_STACK_SIZE 100 
     #define LABEL_SIZE 20 
-    
+    #define MAX_NESTED_LOOPS 100
+
 
     // === SYMBOL TABLE ===
 typedef struct Symbol {
@@ -158,6 +159,9 @@ typedef struct {
 } Quadruple;
 
 Quadruple quads[MAX];
+char* continueLabels[MAX_NESTED_LOOPS];
+char* breakLabels[MAX_NESTED_LOOPS];
+int loopDepth = 0;
 int quadIndex = 0;
 int tempCount = 0;
 int labelCount = 0;
@@ -413,7 +417,42 @@ void emitCases(CaseLabel* list, char* switchTemp){
 
         // Place the saved element at the end
         quads[n - 1] = a;
-    }  
+    } 
+
+// Helper functions
+void pushLoopLabels(char* continueLabel, char* breakLabel) {
+    if (loopDepth < MAX_NESTED_LOOPS) {
+        continueLabels[loopDepth] = strdup(continueLabel);
+        breakLabels[loopDepth] = strdup(breakLabel);
+        loopDepth++;
+    } else {
+        semanticError("Too many nested loops");
+    }
+}
+
+void popLoopLabels() {
+    if (loopDepth > 0) {
+        loopDepth--;
+        free(continueLabels[loopDepth]);
+        free(breakLabels[loopDepth]);
+    }
+}
+
+char* getCurrentContinueLabel() {
+    if (loopDepth > 0) {
+        return continueLabels[loopDepth-1];
+    }
+    semanticError("'continue' statement not within loop");
+    return "";
+}
+
+char* getCurrentBreakLabel() {
+    if (loopDepth > 0) {
+        return breakLabels[loopDepth-1];
+    }
+    semanticError("'break' statement not within loop");
+    return "";
+}
 %}
 
 %union{
@@ -476,7 +515,6 @@ void emitCases(CaseLabel* list, char* switchTemp){
 %type <exprInfo> while_loop
 %type <exprInfo> do_while_loop
 %type <exprInfo> switch_statement
-
 %%
 
 program
@@ -630,10 +668,14 @@ statement
         $$ = $1;
     }
     | CONTINUE SEMI {
+        char* continueLabel = getCurrentContinueLabel();
+        emit("goto", "", "", continueLabel);
         $$.name = strdup("");
         $$.type = strdup("void");
     }
     | BREAK SEMI {
+        char* breakLabel = getCurrentBreakLabel();
+        emit("goto", "", "", breakLabel);
         $$.name = strdup("");
         $$.type = strdup("void");
     }
@@ -1020,6 +1062,7 @@ for_loop
     : FOR LPAREN expression SEMI {
         char* start = newLabel();
         char* end = newLabel();
+        pushLoopLabels(start, end);
         emit("label", "", "", start);
         push(start); push(end);
     }
@@ -1033,12 +1076,14 @@ for_loop
         moveOneToEnd(quadIndex, for_start);
         char* end = pop();
         char* start = pop();
+        popLoopLabels();
         emit("goto", "", "", start);
         emit("label", "", "", end);
     }
     | FOR LPAREN for_init_decl SEMI{
         char* start = newLabel();
         char* end = newLabel();
+        pushLoopLabels(start, end);
         emit("label", "", "", start);
         push(start); push(end);
     }
@@ -1052,6 +1097,7 @@ for_loop
         moveOneToEnd(quadIndex, for_start);       
         char* end = pop();
         char* start = pop();
+        popLoopLabels();
         emit("goto", "", "", start);
         emit("label", "", "", end);
     }
@@ -1062,7 +1108,10 @@ while_loop : WHILE LPAREN{
     emit("label", "", "", start);
     push(start);
 } expression{
+    char* start = pop();
     char* end = newLabel();
+    pushLoopLabels(start, end);
+    push(start);
     push(end);
     emit("ifFalseGoTo", $4.name, "", end);
 
@@ -1070,7 +1119,7 @@ while_loop : WHILE LPAREN{
     char* end = pop();
     char* start = pop();
     // emit condition expression
-    
+    popLoopLabels();
     // body
     emit("goto", "", "", start);
     emit("label", "", "", end);
