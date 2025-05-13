@@ -3,10 +3,9 @@
     #include <string.h>  // for strdup, strcmp
     #include <stdlib.h>
     #define MAX 1000
-    #define MAX_STACK_SIZE 100  // Maximum number of labels to hold in the stack
-    #define LABEL_SIZE 20       // Size for label names (e.g., "L1", "L2", ...)
-
     #define MAX_PARAMS 20  // Maximum number of parameters for a function
+    #define MAX_STACK_SIZE 100 
+    #define LABEL_SIZE 20 
     
 
     // === SYMBOL TABLE ===
@@ -20,6 +19,7 @@ typedef struct Symbol {
     int paramCount;           // Number of parameters
     int scopeLevel;           // Track scope level for block scoping
     struct Symbol *next;
+    int isInitialized;       // Flag to indicate if the variable is initialized
 } Symbol;
 
 Symbol* symbolTable = NULL;
@@ -30,7 +30,7 @@ Symbol* functionTable = NULL;   // Function table for storing function symbols
 Symbol* currentFunction = NULL; // Current function being processed
 int currentArgCount = 0;
 int semanticErrorOccurred = 0;
-
+int for_start = -1;
 
 
     // === ERROR HANDLING ===
@@ -47,10 +47,22 @@ int semanticErrorOccurred = 0;
     fprintf(stderr, "Syntax Error: %s \n", s);
 }
 
+int lookupInCurrentScope(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        // Only check current scope
+        if (strcmp(sym->name, name) == 0 && sym->scopeLevel == currentScopeLevel)
+            return 1;
+        sym = sym->next;
+    }
+    return 0;
+}
+
 int lookup(char* name) {
     Symbol* sym = symbolTable;
     while (sym != NULL) {
-        if (strcmp(sym->name, name) == 0)
+        // Check if name matches AND it's in the current scope or an enclosing scope
+        if (strcmp(sym->name, name) == 0 && sym->scopeLevel <= currentScopeLevel)
             return 1;
         sym = sym->next;
     }
@@ -58,9 +70,9 @@ int lookup(char* name) {
 }
 
 void insertSymbol(char* name, char* type, int isConst) {
-    if (lookup(name)) {
+    if (lookupInCurrentScope(name)) {
         char errorMsg[100];
-        sprintf(errorMsg, "Variable '%s' already declared", name);
+        sprintf(errorMsg, "Variable '%s' already declared in current scope", name);
         semanticError(errorMsg);
         return;
     }
@@ -68,10 +80,37 @@ void insertSymbol(char* name, char* type, int isConst) {
     sym->name = strdup(name);
     sym->type = strdup(type);
     sym->isConstant = isConst;
+    sym->scopeLevel = currentScopeLevel;
     sym->next = symbolTable;
+    sym->isInitialized = 0; // Initialize to false for new symbols
     symbolTable = sym;
 }
 
+void setInitialized(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0) {
+            sym->isInitialized = 1; // Set to true
+            return;
+        }
+        sym = sym->next;
+    }
+}
+
+void checkInitialized(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0) {
+            if (!sym->isInitialized) {
+                char errorMsg[100];
+                sprintf(errorMsg, "Variable '%s' used before initialization", name);
+                semanticError(errorMsg);
+            }
+            return;
+        }
+        sym = sym->next;
+    }
+}
 
 char* getType(char* name) {
     Symbol* sym = symbolTable;
@@ -81,6 +120,16 @@ char* getType(char* name) {
         sym = sym->next;
     }
     return NULL;  // not found
+}
+
+int isConstant(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0)
+            return sym->isConstant;
+        sym = sym->next;
+    }
+    return -1;  // not found
 }
 
 char* resolveType(char* type1, char* type2) {
@@ -100,7 +149,6 @@ char* resolveType(char* type1, char* type2) {
 }
 
 
-
 // === INTERMEDIATE CODE ===
 typedef struct {
     char* op;
@@ -113,7 +161,7 @@ Quadruple quads[MAX];
 int quadIndex = 0;
 int tempCount = 0;
 int labelCount = 0;
-int for_start = -1;
+
 char* newLabel() {
     char* name = malloc(10);
     sprintf(name, "L%d", labelCount++);
@@ -154,42 +202,6 @@ CaseLabel* newCaseLabel(char* value, char* label){
     node->next = NULL;
     return node;
 }
-
-// Stack structure for labels
-typedef struct {
-    char labels[MAX_STACK_SIZE][LABEL_SIZE]; // Array to hold label strings
-    int top;  // Keeps track of the top of the stack
-} LabelStack;
-// Push a new label onto the stack
-// Initialize the stack
-LabelStack labelStack; // << Global instance
-
-// --- Stack Operations ---
-void initStack() {
-    labelStack.top = -1;
-}
-
-int isStackEmpty() {
-    return labelStack.top == -1;
-}
-
-void push(const char *label) {
-    if (labelStack.top < MAX_STACK_SIZE - 1) {
-        labelStack.top++;
-        strncpy(labelStack.labels[labelStack.top], label, LABEL_SIZE);
-    } else {
-        printf("Stack overflow!\n");
-    }
-}
-
-char* pop() {
-    if (!isStackEmpty()) {
-        return labelStack.labels[labelStack.top--];
-    } else {
-        printf("Stack underflow!\n");
-        return NULL;
-    }
-}
 void emitCases(CaseLabel* list, char* switchTemp){
 
     CaseLabel* curr = list;
@@ -207,21 +219,7 @@ void emitCases(CaseLabel* list, char* switchTemp){
     }
 
 }
-void moveOneToEnd(int n, int x) {
-    if (x < 0 || x >= n) {
-        printf("Invalid position\n");
-        return;
-    }
 
-    Quadruple a = quads[x];
-    // Shift elements left
-    for (int i = x + 1; i < n; i++) {
-        quads[i - 1] = quads[i];
-    }
-
-    // Place the saved element at the end
-    quads[n - 1] = a;
-}
 
     // === FUNCTION TABLE MANAGEMENT ===
     Symbol* insertFunction(char* name, char* returnType) {
@@ -364,7 +362,58 @@ void moveOneToEnd(int n, int x) {
         // Ideally, we would also check argument types here
         return 1;
     }
+    
 
+    // Stack structure for labels
+    typedef struct {
+        char labels[MAX_STACK_SIZE][LABEL_SIZE]; // Array to hold label strings
+        int top;  // Keeps track of the top of the stack
+    } LabelStack;
+    // Push a new label onto the stack
+    // Initialize the stack
+    LabelStack labelStack; // << Global instance
+
+    // --- Stack Operations ---
+    void initStack() {
+        labelStack.top = -1;
+    }
+
+    int isStackEmpty() {
+        return labelStack.top == -1;
+    }
+
+    void push(const char *label) {
+        if (labelStack.top < MAX_STACK_SIZE - 1) {
+            labelStack.top++;
+            strncpy(labelStack.labels[labelStack.top], label, LABEL_SIZE);
+        } else {
+            printf("Stack overflow!\n");
+        }
+    }
+
+    char* pop() {
+        if (!isStackEmpty()) {
+            return labelStack.labels[labelStack.top--];
+        } else {
+            printf("Stack underflow!\n");
+            return NULL;
+        }
+    }
+    void moveOneToEnd(int n, int x) {
+        if (x < 0 || x >= n) {
+            printf("Invalid position\n");
+            return;
+        }
+
+        Quadruple a = quads[x];
+        // Shift elements left
+        for (int i = x + 1; i < n; i++) {
+            quads[i - 1] = quads[i];
+        }
+
+        // Place the saved element at the end
+        quads[n - 1] = a;
+    }  
 %}
 
 %union{
@@ -446,12 +495,15 @@ external
   ;
 
 declaration
-  : type var_list SEMI  {isConst = 0;}
-  | const_decl          {isConst = 0;}
+  : type var_list SEMI  
+  | const_decl          
   ;
 
-const_decl : CONST type var_list SEMI {
+const_decl : CONST
+{
     isConst = 1;
+} type var_list SEMI {
+    isConst = 0;
 }
 ;
 
@@ -459,7 +511,12 @@ var_list: init_declarator
   | var_list COMMA init_declarator
   ;
 
-init_declarator: ID   { insertSymbol($1, currentType, isConst); }
+init_declarator: ID   { 
+    insertSymbol($1, currentType, isConst); 
+    if(isConstant($1) == 1) {
+        semanticError("Constant variables must be initialized");
+    }
+    }
   | ID ASSIGN expression {
     if (strcmp(currentType, $3.type) != 0) {
                 char errorMsg[200];
@@ -467,6 +524,7 @@ init_declarator: ID   { insertSymbol($1, currentType, isConst); }
                 semanticError(errorMsg);
             }
     insertSymbol($1, currentType, isConst);
+    setInitialized($1);  // mark as initialized
     emit("=", $3.name, "", $1);
   }
   ;
@@ -580,8 +638,11 @@ statement
         $$.type = strdup("void");
     }
     | RETURN expression SEMI {
-        $$.name = $2.name;
-        $$.type = $2.type;
+        if (currentFunction) {
+            if (strcmp(currentFunction->returnType, $2.type) != 0) {
+                semanticError("Return type doesn't match function return type");
+            }
+        }
     }
     | RETURN SEMI {
         $$.name = strdup("");
@@ -595,15 +656,28 @@ expression
         $$ = $1;
     }
     | expression ASSIGN expression {
-    char* lhs_type = getType($1.name);
-    if (lhs_type == NULL) {
-    lhs_type = strdup("unknown"); // Fallback to avoid NULL dereference
-    }
-    char* rhs_type = $3.type;
+        if (!lookup($1.name)) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Assignment to undeclared variable '%s'", $1.name);
+            semanticError(errorMsg);
+        }
 
-    if (strcmp(lhs_type, rhs_type) != 0) {
-        semanticError("Type mismatch in assignment");
-    }
+        if (isConstant($1.name) == 1) {
+            semanticError("Cannot modify constant variable");
+        }
+        
+        char* lhs_type = getType($1.name);
+        char* rhs_type = $3.type;
+
+        // Only check type mismatch if the variable exists (has a type)
+        if (lhs_type != NULL && strcmp(lhs_type, rhs_type) != 0) {
+            semanticError("Type mismatch in assignment");
+        }
+        
+        // Now set a fallback for code generation
+        if (lhs_type == NULL) {
+            lhs_type = strdup("unknown");
+        }
 
     // Check for i = i + 1 or similar
     if (
@@ -625,12 +699,14 @@ expression
         strcpy(quads[quadIndex - 1].result, $1.name);
         quadIndex--;  // remove redundant temp result
         emit(compound, $1.name, quads[quadIndex].arg2, $1.name);  // regenerate as compound
+        setInitialized($1.name);  // mark as initialized
     } else {
         emit("=", $3.name, "", $1.name);
+        setInitialized($1.name);  // mark as initialized
     }
 
-    $$.name = $1.name;
-    $$.type = lhs_type;
+        $$.name = $1.name;
+        $$.type = lhs_type;
 }
 ;
 
@@ -765,6 +841,8 @@ primary_expression
     : ID { 
     if (!lookup($1)) {
         semanticError("Undeclared identifier used in expression");
+    } else  {
+        checkInitialized($1);  // Check if the variable is initialized
     }
     $$.name = $1;
     $$.type = getType($1);
@@ -816,6 +894,7 @@ primary_expression
     }
     ;
     
+
 conditional_statement
     : IF LPAREN expression {
         char* elseLabel = newLabel();
@@ -932,6 +1011,7 @@ for_init_decl
     : type ID ASSIGN expression {
         insertSymbol($2, currentType, isConst);
         emit("=", $4.name, "", $2);
+        setInitialized($2);  // mark as initialized
         $$.name = $2;
         $$.type = currentType;
     }
@@ -1020,12 +1100,11 @@ do_while_loop : DO {
 void printSymbolTable() {
     printf("\nSymbol Table:\n");
     for (Symbol* sym = symbolTable; sym != NULL; sym = sym->next) {
-        printf("Name: %s, Type: %s, Constant: %s\n", sym->name, sym->type, sym->isConstant ? "Yes" : "No");
+        printf("Name: %s, Type: %s, Constant: %s, isFunction: %s\n", sym->name, sym->type, sym->isConstant ? "Yes" : "No", sym->isFunction ? "Yes" : "No");
     }
    
 }
 int main(int argc, char **argv) {
-    initStack();
     if (argc > 1) {
         yyin = fopen(argv[1], "r");
         if (!yyin) {
