@@ -279,6 +279,8 @@ void emitCases(CaseLabel* list, char* switchTemp){
         param->isFunction = 0;
         param->next = NULL;
         param->scopeLevel = currentScopeLevel + 1;  // Parameters are in function's scope
+
+        param->isInitialized = 1;
         
         // Add to function's parameter list
         function->parameters[function->paramCount++] = param;
@@ -694,9 +696,21 @@ statement
             if (strcmp(currentFunction->returnType, $2.type) != 0) {
                 semanticError("Return type doesn't match function return type");
             }
+            emit("return", $2.name, "", "");
         }
+        $$.name = strdup("");
+        $$.type = strdup("void");
     }
     | RETURN SEMI {
+        if (currentFunction && strcmp(currentFunction->returnType, "void") != 0) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Function '%s' has return type '%s' but returns no value", 
+                    currentFunction->name, currentFunction->returnType);
+            semanticError(errorMsg);
+        }
+        if (currentFunction) {
+            emit("return", "", "", "");
+        }
         $$.name = strdup("");
         $$.type = strdup("void");
     }
