@@ -3,9 +3,6 @@
     #include <string.h>  // for strdup, strcmp
     #include <stdlib.h>
     #define MAX 1000
-    #define MAX_STACK_SIZE 100  // Maximum number of labels to hold in the stack
-    #define LABEL_SIZE 20       // Size for label names (e.g., "L1", "L2", ...)
-
     #define MAX_PARAMS 20  // Maximum number of parameters for a function
     
 
@@ -20,6 +17,7 @@ typedef struct Symbol {
     int paramCount;           // Number of parameters
     int scopeLevel;           // Track scope level for block scoping
     struct Symbol *next;
+    int isInitialized;       // Flag to indicate if the variable is initialized
 } Symbol;
 
 Symbol* symbolTable = NULL;
@@ -69,9 +67,35 @@ void insertSymbol(char* name, char* type, int isConst) {
     sym->type = strdup(type);
     sym->isConstant = isConst;
     sym->next = symbolTable;
+    sym->isInitialized = 0; // Initialize to false for new symbols
     symbolTable = sym;
 }
 
+void setInitialized(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0) {
+            sym->isInitialized = 1; // Set to true
+            return;
+        }
+        sym = sym->next;
+    }
+}
+
+void checkInitialized(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0) {
+            if (!sym->isInitialized) {
+                char errorMsg[100];
+                sprintf(errorMsg, "Variable '%s' used before initialization", name);
+                semanticError(errorMsg);
+            }
+            return;
+        }
+        sym = sym->next;
+    }
+}
 
 char* getType(char* name) {
     Symbol* sym = symbolTable;
@@ -81,6 +105,16 @@ char* getType(char* name) {
         sym = sym->next;
     }
     return NULL;  // not found
+}
+
+int isConstant(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        if (strcmp(sym->name, name) == 0)
+            return sym->isConstant;
+        sym = sym->next;
+    }
+    return -1;  // not found
 }
 
 char* resolveType(char* type1, char* type2) {
@@ -113,7 +147,7 @@ Quadruple quads[MAX];
 int quadIndex = 0;
 int tempCount = 0;
 int labelCount = 0;
-int for_start = -1;
+
 char* newLabel() {
     char* name = malloc(10);
     sprintf(name, "L%d", labelCount++);
@@ -154,74 +188,27 @@ CaseLabel* newCaseLabel(char* value, char* label){
     node->next = NULL;
     return node;
 }
-
-// Stack structure for labels
-typedef struct {
-    char labels[MAX_STACK_SIZE][LABEL_SIZE]; // Array to hold label strings
-    int top;  // Keeps track of the top of the stack
-} LabelStack;
-// Push a new label onto the stack
-// Initialize the stack
-LabelStack labelStack; // << Global instance
-
-// --- Stack Operations ---
-void initStack() {
-    labelStack.top = -1;
-}
-
-int isStackEmpty() {
-    return labelStack.top == -1;
-}
-
-void push(const char *label) {
-    if (labelStack.top < MAX_STACK_SIZE - 1) {
-        labelStack.top++;
-        strncpy(labelStack.labels[labelStack.top], label, LABEL_SIZE);
-    } else {
-        printf("Stack overflow!\n");
-    }
-}
-
-char* pop() {
-    if (!isStackEmpty()) {
-        return labelStack.labels[labelStack.top--];
-    } else {
-        printf("Stack underflow!\n");
-        return NULL;
-    }
-}
 void emitCases(CaseLabel* list, char* switchTemp){
-
+    char* endLabel = newLabel();
     CaseLabel* curr = list;
     char* defaultLabel = NULL;
     while(curr){
         if(strcmp(curr->value, "default") == 0){
             defaultLabel = curr->label;
         }else{
-            emit("ifEqualGoTo", switchTemp, curr->value, curr->label);
+            emit("ifEqual", switchTemp, curr->value, curr->label);
         }
         curr = curr->next;
     }
     if(defaultLabel){
         emit("goto", "", "", defaultLabel);
+    }else{
+        emit("goto", "", "", endLabel);
     }
 
+    emit("label", "", "", endLabel);
 }
-void moveOneToEnd(int n, int x) {
-    if (x < 0 || x >= n) {
-        printf("Invalid position\n");
-        return;
-    }
 
-    Quadruple a = quads[x];
-    // Shift elements left
-    for (int i = x + 1; i < n; i++) {
-        quads[i - 1] = quads[i];
-    }
-
-    // Place the saved element at the end
-    quads[n - 1] = a;
-}
 
     // === FUNCTION TABLE MANAGEMENT ===
     Symbol* insertFunction(char* name, char* returnType) {
@@ -446,12 +433,15 @@ external
   ;
 
 declaration
-  : type var_list SEMI  {isConst = 0;}
-  | const_decl          {isConst = 0;}
+  : type var_list SEMI  
+  | const_decl          
   ;
 
-const_decl : CONST type var_list SEMI {
+const_decl : CONST
+{
     isConst = 1;
+} type var_list SEMI {
+    isConst = 0;
 }
 ;
 
@@ -459,7 +449,12 @@ var_list: init_declarator
   | var_list COMMA init_declarator
   ;
 
-init_declarator: ID   { insertSymbol($1, currentType, isConst); }
+init_declarator: ID   { 
+    insertSymbol($1, currentType, isConst); 
+    if(isConstant($1) == 1) {
+        semanticError("Constant variables must be initialized");
+    }
+    }
   | ID ASSIGN expression {
     if (strcmp(currentType, $3.type) != 0) {
                 char errorMsg[200];
@@ -467,6 +462,7 @@ init_declarator: ID   { insertSymbol($1, currentType, isConst); }
                 semanticError(errorMsg);
             }
     insertSymbol($1, currentType, isConst);
+    setInitialized($1);  // mark as initialized
     emit("=", $3.name, "", $1);
   }
   ;
@@ -599,6 +595,9 @@ expression
     if (lhs_type == NULL) {
     lhs_type = strdup("unknown"); // Fallback to avoid NULL dereference
     }
+    if(isConstant($1.name) == 1) {
+        semanticError("Cannot assign to a constant variable");
+    }
     char* rhs_type = $3.type;
 
     if (strcmp(lhs_type, rhs_type) != 0) {
@@ -625,8 +624,10 @@ expression
         strcpy(quads[quadIndex - 1].result, $1.name);
         quadIndex--;  // remove redundant temp result
         emit(compound, $1.name, quads[quadIndex].arg2, $1.name);  // regenerate as compound
+        setInitialized($1.name);  // mark as initialized
     } else {
         emit("=", $3.name, "", $1.name);
+        setInitialized($1.name);  // mark as initialized
     }
 
     $$.name = $1.name;
@@ -765,6 +766,8 @@ primary_expression
     : ID { 
     if (!lookup($1)) {
         semanticError("Undeclared identifier used in expression");
+    } else  {
+        checkInitialized($1);  // Check if the variable is initialized
     }
     $$.name = $1;
     $$.type = getType($1);
@@ -817,45 +820,37 @@ primary_expression
     ;
     
 conditional_statement
-    : IF LPAREN expression {
-        char* elseLabel = newLabel();
-        emit("ifFalseGoto", $3.name, "", elseLabel);
-        push(elseLabel);
-    }RPAREN block optional_else
-    | switch_statement
-    ;
-
-optional_else
-    : ELSE {
-        // Get the else label and place it here
-        // Generate label for the end of the entire if-else
-        char* elseLabel = pop();
+    : IF LPAREN expression RPAREN block {
         char* endLabel = newLabel();
+        emit("ifFalseGoTo", $3.name, "", endLabel);
+        emit("label", "", "", endLabel);
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    | IF LPAREN expression RPAREN block ELSE block {
+        char* endLabel = newLabel();
+        char* elseLabel = newLabel();
+        emit("ifFalseGoTo", $3.name, "", elseLabel);
         emit("goto", "", "", endLabel);
         emit("label", "", "", elseLabel);
-        push(endLabel);
-    }block {
-        char* endLabel = pop();
         emit("label", "", "", endLabel);
+        $$.name = strdup("");
+        $$.type = strdup("void");
     }
-    |{
-        // Get the else label and place it here
-        char* elseLabel = pop();
-        emit("label", "", "", elseLabel);
+    | switch_statement {
+        $$ = $1;
     }
     ;
 
-switch_statement : SWITCH {
-    char* switchEndLabel = newLabel();
-    push(switchEndLabel);
-}LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
-    // if expression is true
-    char* switchTemp = newTemp();
-    emit("=", $4.name, "", switchTemp);
-    emitCases($7, switchTemp);
-    char* switchEndLabel = pop();
-    emit("label", "", "", switchEndLabel);           
-};
+switch_statement 
+    : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
+        char* switchTemp = newTemp();
+        emit("assign", $3.name, "", switchTemp);
+        emitCases($6, switchTemp);
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    ;
 
 switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
     CaseLabel* q = $1;
@@ -867,35 +862,17 @@ switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
     }
 };
 
-switch_case : CASE constant COLON {
+switch_case : CASE constant COLON statement{
                 char* label = newLabel();
                 emit("label", "", "", label);
                 //emit statement code;
-                printf("Stack length is %d\n", isStackEmpty());
-                push(label);
-
-                }
-            statement BREAK SEMI{
-                char* label = pop();
-                char* end = pop();
-                
-                emit("goto", "", "", end);
-                push(end);
                 $$ = newCaseLabel($2, label);
-            }
-                
-            | DEFAULT COLON  {
+}
+            | DEFAULT COLON statement {
                 char* label = newLabel();
                 emit("label", "", "", label);
                 // emit statement code
-                push(label);
-            }statement BREAK SEMI{
-                char* label = pop();
-                char* end = pop();
-                emit("goto", "", "", end);
                 $$ = newCaseLabel("default", label);
-                push(end);
-
             }
             ;
 
@@ -928,86 +905,60 @@ loops
         $$ = $1;
     }
     ;
+
 for_init_decl
     : type ID ASSIGN expression {
         insertSymbol($2, currentType, isConst);
         emit("=", $4.name, "", $2);
+        setInitialized($2);  // mark as initialized
         $$.name = $2;
         $$.type = currentType;
     }
     ;
-for_loop
-    : FOR LPAREN expression SEMI {
+
+for_loop 
+    : FOR LPAREN expression SEMI expression SEMI expression RPAREN block {
         char* start = newLabel();
         char* end = newLabel();
         emit("label", "", "", start);
-        push(start); push(end);
-    }
-    expression SEMI {
-        char* end = pop();
-        emit("ifFalseGoTo", $6.name, "", end);
-        push(end);
-        for_start = quadIndex;
-    }
-    expression RPAREN block {
-        moveOneToEnd(quadIndex, for_start);
-        char* end = pop();
-        char* start = pop();
+        emit("ifFalseGoTo", $5.name, "", end);
         emit("goto", "", "", start);
         emit("label", "", "", end);
+        $$.name = strdup("");
+        $$.type = strdup("void");
     }
-    | FOR LPAREN for_init_decl SEMI{
-        char* start = newLabel();
-        char* end = newLabel();
-        emit("label", "", "", start);
-        push(start); push(end);
-    }
-    expression SEMI {
-        char* end = pop();
-        emit("ifFalseGoTo", $6.name, "", end);
-        push(end);
-        for_start = quadIndex;
-    }
-    expression RPAREN block {
-        moveOneToEnd(quadIndex, for_start);       
-        char* end = pop();
-        char* start = pop();
-        emit("goto", "", "", start);
-        emit("label", "", "", end);
+    | FOR LPAREN for_init_decl SEMI expression SEMI expression RPAREN block
+    {
+    char* start = newLabel();
+    char* end = newLabel();
+    emit("label", "", "", start);
+    emit("ifFalseGoTo", $5.name, "", end);
+    // emite code l body ally hwa l b lock;
+    // emit code for incrementing
+    emit("goto", "", "", start);
+    emit("label", "", "", end);
     }
     ;
 
-while_loop : WHILE LPAREN{
-    char* start = newLabel();
-    emit("label", "", "", start);
-    push(start);
-} expression{
-    char* end = newLabel();
-    push(end);
-    emit("ifFalseGoTo", $4.name, "", end);
-
-} RPAREN block {
-    char* end = pop();
-    char* start = pop();
-    // emit condition expression
-    
-    // body
-    emit("goto", "", "", start);
-    emit("label", "", "", end);
-};
-
-do_while_loop : DO {
+while_loop 
+    : WHILE LPAREN expression RPAREN block {
         char* start = newLabel();
-        emit("label", "", "", start);
-        push(start);
-
-    } block WHILE LPAREN expression RPAREN SEMI
-    {
         char* end = newLabel();
-        char* start = pop();
-        // emit code for block
-        // emit code for condition
-        emit("ifFalseGoTo", $6.name, "", end);
+        emit("label", "", "", start);
+        emit("ifFalseGoTo", $3.name, "", end);
+        emit("goto", "", "", start);
+        emit("label", "", "", end);
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    ;
+
+do_while_loop 
+    : DO block WHILE LPAREN expression RPAREN SEMI {
+        char* start = newLabel();
+        char* end = newLabel();
+        emit("label", "", "", start);
+        emit("ifFalseGoTo", $5.name, "", end);
         emit("goto", "", "", start);
         emit("label", "", "", end);
         $$.name = strdup("");
@@ -1020,12 +971,11 @@ do_while_loop : DO {
 void printSymbolTable() {
     printf("\nSymbol Table:\n");
     for (Symbol* sym = symbolTable; sym != NULL; sym = sym->next) {
-        printf("Name: %s, Type: %s, Constant: %s\n", sym->name, sym->type, sym->isConstant ? "Yes" : "No");
+        printf("Name: %s, Type: %s, Constant: %s, isFunction: %s\n", sym->name, sym->type, sym->isConstant ? "Yes" : "No", sym->isFunction ? "Yes" : "No");
     }
    
 }
 int main(int argc, char **argv) {
-    initStack();
     if (argc > 1) {
         yyin = fopen(argv[1], "r");
         if (!yyin) {
