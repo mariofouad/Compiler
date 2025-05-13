@@ -45,6 +45,17 @@ int semanticErrorOccurred = 0;
     fprintf(stderr, "Syntax Error: %s \n", s);
 }
 
+int lookupInCurrentScope(char* name) {
+    Symbol* sym = symbolTable;
+    while (sym != NULL) {
+        // Only check current scope
+        if (strcmp(sym->name, name) == 0 && sym->scopeLevel == currentScopeLevel)
+            return 1;
+        sym = sym->next;
+    }
+    return 0;
+}
+
 int lookup(char* name) {
     Symbol* sym = symbolTable;
     while (sym != NULL) {
@@ -57,9 +68,9 @@ int lookup(char* name) {
 }
 
 void insertSymbol(char* name, char* type, int isConst) {
-    if (lookup(name)) {
+    if (lookupInCurrentScope(name)) {
         char errorMsg[100];
-        sprintf(errorMsg, "Variable '%s' already declared", name);
+        sprintf(errorMsg, "Variable '%s' already declared in current scope", name);
         semanticError(errorMsg);
         return;
     }
@@ -578,8 +589,11 @@ statement
         $$.type = strdup("void");
     }
     | RETURN expression SEMI {
-        $$.name = $2.name;
-        $$.type = $2.type;
+        if (currentFunction) {
+            if (strcmp(currentFunction->returnType, $2.type) != 0) {
+                semanticError("Return type doesn't match function return type");
+            }
+        }
     }
     | RETURN SEMI {
         $$.name = strdup("");
@@ -597,6 +611,10 @@ expression
             char errorMsg[100];
             sprintf(errorMsg, "Assignment to undeclared variable '%s'", $1.name);
             semanticError(errorMsg);
+        }
+
+        if (isConstant($1.name) == 1) {
+            semanticError("Cannot modify constant variable");
         }
         
         char* lhs_type = getType($1.name);
