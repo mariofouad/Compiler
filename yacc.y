@@ -2,6 +2,7 @@
     #include <stdio.h>
     #include <string.h>  // for strdup, strcmp
     #include <stdlib.h>
+    #include <ctype.h>
     #define MAX 1000
     #define MAX_PARAMS 20  // Maximum number of parameters for a function
     #define MAX_STACK_SIZE 100 
@@ -464,6 +465,7 @@ char* getCurrentBreakLabel() {
     struct {
         char* name;  // name of the result  (e.g., temp variable name)
         char* type;  // type of the result (e.g., "int", "float")
+        int isTarget;  //1 if target of assignment, 0 otherwise
     } exprInfo;     // for full expression information
 }
 
@@ -698,6 +700,13 @@ expression
         $$ = $1;
     }
     | expression ASSIGN expression {
+        $1.isTarget = 1;  
+
+
+        if ($3.name[0] != 't' && $3.name[0] != '\'' && !isdigit($3.name[0])) {
+            checkInitialized($3.name);
+        }
+
         if (!lookup($1.name)) {
             char errorMsg[100];
             sprintf(errorMsg, "Assignment to undeclared variable '%s'", $1.name);
@@ -823,12 +832,26 @@ mathematical_expression
         $$ = $1;
     }
     | mathematical_expression PLUS term {
+         if ($1.name[0] != 't' && $1.name[0] != '\'' && !isdigit($1.name[0])) {
+            checkInitialized($1.name);
+        }
+        if ($3.name[0] != 't' && $3.name[0] != '\'' && !isdigit($3.name[0])) {
+            checkInitialized($3.name);
+        }
+        
         char* temp = newTemp();
         emit("+", $1.name, $3.name, temp);
         $$.name = temp;
-        $$.type = resolveType($1.type, $3.type);  
+        $$.type = resolveType($1.type, $3.type);   
     }
     | mathematical_expression MINUS term {
+        if ($1.name[0] != 't' && $1.name[0] != '\'' && !isdigit($1.name[0])) {
+            checkInitialized($1.name);
+        }
+        if ($3.name[0] != 't' && $3.name[0] != '\'' && !isdigit($3.name[0])) {
+            checkInitialized($3.name);
+        }
+        
         char* temp = newTemp();
         emit("-", $1.name, $3.name, temp);
         $$.name = temp;
@@ -840,12 +863,26 @@ mathematical_expression
 
 term
     : term MUL factor {
+        if ($1.name[0] != 't' && $1.name[0] != '\'' && !isdigit($1.name[0])) {
+            checkInitialized($1.name);
+        }
+        if ($3.name[0] != 't' && $3.name[0] != '\'' && !isdigit($3.name[0])) {
+            checkInitialized($3.name);
+        }
+        
         char* temp = newTemp();
         emit("*", $1.name, $3.name, temp);
         $$.name = temp;
         $$.type = resolveType($1.type, $3.type);
     }
     | term DIV factor {
+        if ($1.name[0] != 't' && $1.name[0] != '\'' && !isdigit($1.name[0])) {
+            checkInitialized($1.name);
+        }
+        if ($3.name[0] != 't' && $3.name[0] != '\'' && !isdigit($3.name[0])) {
+            checkInitialized($3.name);
+        }
+        
         char* temp = newTemp();
         emit("/", $1.name, $3.name, temp);
         $$.name = temp;
@@ -883,11 +920,10 @@ primary_expression
     : ID { 
     if (!lookup($1)) {
         semanticError("Undeclared identifier used in expression");
-    } else  {
-        checkInitialized($1);  // Check if the variable is initialized
     }
     $$.name = $1;
     $$.type = getType($1);
+    $$.isTarget = 0;  // Default: not a target
     }
     | STRING_LITERAL {
     char* temp = newTemp();
