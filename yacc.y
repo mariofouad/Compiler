@@ -16,15 +16,6 @@ Symbol* symbolTable = NULL;
 char* currentType = NULL;
 int isConst = 0;
 
-void insertSymbol(char* name, char* type, int isConst) {
-    Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
-    sym->name = strdup(name);
-    sym->type = strdup(type);
-    sym->isConstant = isConst;
-    sym->next = symbolTable;
-    symbolTable = sym;
-}
-
 int lookup(char* name) {
     Symbol* sym = symbolTable;
     while (sym != NULL) {
@@ -34,6 +25,21 @@ int lookup(char* name) {
     }
     return 0;
 }
+
+void insertSymbol(char* name, char* type, int isConst) {
+    if (lookup(name)) {
+        printf("Error: Duplicate declaration of variable '%s'\n", name);
+        return;
+    }
+    Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
+    sym->name = strdup(name);
+    sym->type = strdup(type);
+    sym->isConstant = isConst;
+    sym->next = symbolTable;
+    symbolTable = sym;
+}
+
+
 char* getType(char* name) {
     Symbol* sym = symbolTable;
     while (sym != NULL) {
@@ -135,8 +141,13 @@ void emitCases(CaseLabel* list, char* switchTemp){
 
     emit("label", "", "", endLabel);
 }
+
     // === ERROR HANDLING ===
+
     extern int yylineno;
+    void semanticError(const char* msg) {
+    fprintf(stderr, "Semantic Error : %s\n",  msg);
+}
     extern char* yytext;
     extern FILE *yyin;
     int yylex(void);
@@ -186,6 +197,7 @@ void emitCases(CaseLabel* list, char* switchTemp){
 %type <exprInfo> factor
 %type <exprInfo> primary_expression
 %type <exprInfo> statement
+%type <exprInfo> for_init_decl
 
 
 
@@ -303,10 +315,16 @@ expression
         $$ = $1;
     }
     | expression ASSIGN expression {
-        // need to check if the variable is declared and if the types match
+        // need to check if the variable is declared and if the types match --> DONE 
+        if (!lookup($1.name)) {
+        semanticError("Undeclared identifier used in assignment");
+        }
 
         char* lhs_type = getType($1.name);
-
+        char* rhs_type = $3.type;
+        if (strcmp(lhs_type, rhs_type) != 0) {
+            semanticError("Type mismatch in assignment\n");
+        }
         emit("=", $3.name, "", $1.name);
         $$.name = $1.name;
         $$.type = lhs_type;
@@ -395,6 +413,7 @@ mathematical_expression
         $$.name = temp;
         $$.type = resolveType($1.type, $3.type);
     }
+    ;
 
 
 
@@ -431,12 +450,19 @@ factor
     | LPAREN expression RPAREN {
         $$ = $2;
     }
-    | MINUS factor // negative (-4)
+    | MINUS factor {
+        char* temp = newTemp();
+        emit("-", $2.name, "", temp);
+        $$.name = temp;
+        $$.type = $2.type; 
+    } // negative (-4)
     ;
 
 primary_expression
-    : ID {
-    // need to check if the variable is declared 
+    : ID { 
+    if (!lookup($1)) {
+        semanticError("Undeclared identifier used in expression\n");
+    }
     $$.name = $1;
     $$.type = getType($1);
     }
@@ -538,7 +564,7 @@ constant : INT_LITERAL {
 }
 | ID {
     if(!lookup($1)){
-        yyerror("Undeclared identifier used as a constant for switch\n");
+        semanticError("Undeclared identifier used as a constant for switch\n");
     }
     $$ = strdup($1);
 }
@@ -550,31 +576,47 @@ loops
     | do_while_loop
     ;
 
-for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
-        {
-            char* start = newLabel();
-            char* end = newLabel();
-            // emit code related to init
-            emit("label", "", "", start);
-            emit("ifFalseGoTo", $5.name, "", end);
-            // emite code l body ally hwa l b lock;
-            // emit code for incrementing
-            emit("goto", "", "", start);
-            emit("label", "", "", end);
-            
-        }
-         | FOR LPAREN INT expression SEMI expression SEMI expression RPAREN block
-         {
-            char* start = newLabel();
-            char* end = newLabel();
-            emit("label", "", "", start);
-            emit("ifFalseGoTo", $6.name, "", end);
-            // emite code l body ally hwa l b lock;
-            // emit code for incrementing
-            emit("goto", "", "", start);
-            emit("label", "", "", end);
-            }
-         ;
+for_init_decl
+    : type ID ASSIGN expression {
+        insertSymbol($2, currentType, isConst);
+        emit("=", $4.name, "", $2);
+        $$.name = $2;
+        $$.type = currentType;
+    }
+    ;
+
+for_loop
+    : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
+    {
+        char* start = newLabel();
+        char* end = newLabel();
+
+        // 1. emit init expression (e.g., i = 0)
+        // $3 is the init expression (e.g., i = 0)
+
+        emit("label", "", "", start);                  // 2. Lstart
+        emit("<cond_op>", $5.name, "", "tCond");       // 3. Evaluate condition
+        emit("ifFalseGoTo", "tCond", "", end);         // 4. ifFalseGoTo Lend
+
+        // 5. Emit loop body ($9)
+        // 6. Emit increment expression ($7)
+        // (Re-evaluate condition next iteration)
+
+        emit("goto", "", "", start);                   // 7. back to Lstart
+        emit("label", "", "", end);                    // 8. Lend
+    }
+    | FOR LPAREN for_init_decl SEMI expression SEMI expression RPAREN block
+    {
+    char* start = newLabel();
+    char* end = newLabel();
+    emit("label", "", "", start);
+    emit("ifFalseGoTo", $5.name, "", end);
+    // emite code l body ally hwa l b lock;
+    // emit code for incrementing
+    emit("goto", "", "", start);
+    emit("label", "", "", end);
+    }
+    ;
 
 while_loop : WHILE LPAREN expression RPAREN block {
     char* start = newLabel();
@@ -604,7 +646,13 @@ do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI
 %%
 
 
-
+void printSymbolTable() {
+    printf("\nSymbol Table:\n");
+    for (Symbol* sym = symbolTable; sym != NULL; sym = sym->next) {
+        printf("Name: %s, Type: %s, Constant: %s\n", sym->name, sym->type, sym->isConstant ? "Yes" : "No");
+    }
+   
+}
 int main(int argc, char **argv) {
     if (argc > 1) {
         yyin = fopen(argv[1], "r");
@@ -616,6 +664,7 @@ int main(int argc, char **argv) {
 
     if (yyparse() == 0){
         printQuads();
+        printSymbolTable();
         return 0;
     }
 
