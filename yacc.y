@@ -6,26 +6,45 @@
     #define MAX_STACK_SIZE 100  // Maximum number of labels to hold in the stack
     #define LABEL_SIZE 20       // Size for label names (e.g., "L1", "L2", ...)
 
+    #define MAX_PARAMS 20  // Maximum number of parameters for a function
+    
 
     // === SYMBOL TABLE ===
 typedef struct Symbol {
     char *name;
     char *type;
     int isConstant;
+    int isFunction;           // Flag to indicate if this is a function
+    char *returnType;         // Return type for functions
+    struct Symbol *parameters[MAX_PARAMS];  // Array of parameter symbols
+    int paramCount;           // Number of parameters
+    int scopeLevel;           // Track scope level for block scoping
     struct Symbol *next;
 } Symbol;
 
 Symbol* symbolTable = NULL;
 char* currentType = NULL;
 int isConst = 0;
+int currentScopeLevel = 0;  //Scope level management
+Symbol* functionTable = NULL;   // Function table for storing function symbols
+Symbol* currentFunction = NULL; // Current function being processed
+int currentArgCount = 0;
+int semanticErrorOccurred = 0;
 
-void insertSymbol(char* name, char* type, int isConst) {
-    Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
-    sym->name = strdup(name);
-    sym->type = strdup(type);
-    sym->isConstant = isConst;
-    sym->next = symbolTable;
-    symbolTable = sym;
+
+
+    // === ERROR HANDLING ===
+
+    extern int yylineno;
+    void semanticError(const char* msg) {
+    fprintf(stderr, "Semantic Error : %s\n",  msg);
+    semanticErrorOccurred = 1;
+}
+    extern char* yytext;
+    extern FILE *yyin;
+    int yylex(void);
+    void yyerror(char* s) {
+    fprintf(stderr, "Syntax Error: %s \n", s);
 }
 
 int lookup(char* name) {
@@ -37,6 +56,23 @@ int lookup(char* name) {
     }
     return 0;
 }
+
+void insertSymbol(char* name, char* type, int isConst) {
+    if (lookup(name)) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Variable '%s' already declared", name);
+        semanticError(errorMsg);
+        return;
+    }
+    Symbol* sym = (Symbol*)malloc(sizeof(Symbol));
+    sym->name = strdup(name);
+    sym->type = strdup(type);
+    sym->isConstant = isConst;
+    sym->next = symbolTable;
+    symbolTable = sym;
+}
+
+
 char* getType(char* name) {
     Symbol* sym = symbolTable;
     while (sym != NULL) {
@@ -189,14 +225,151 @@ void moveTwoToEnd(int n, int x) {
     quads[n - 2] = a;
     quads[n - 1] = b;
 }
-    // === ERROR HANDLING ===
-    extern int yylineno;
-    extern char* yytext;
-    extern FILE *yyin;
-    int yylex(void);
-    void yyerror(char* s) {
-    fprintf(stderr, "Syntax Error: %s \n", s);
-}%}
+
+
+    // === FUNCTION TABLE MANAGEMENT ===
+    Symbol* insertFunction(char* name, char* returnType) {
+        // check if function already exists
+        if (lookup(name)) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Function '%s' already declared", name);
+            yyerror(errorMsg);
+            return NULL;
+        }
+        
+        // Create function symbol
+        Symbol* func = (Symbol*)malloc(sizeof(Symbol));
+        func->name = strdup(name);
+        func->type = strdup("function");
+        func->returnType = strdup(returnType);
+        func->isFunction = 1;
+        func->isConstant = 0;
+        func->paramCount = 0;
+        func->next = functionTable;
+        func->scopeLevel = currentScopeLevel;
+        
+        // Insert into symbol table
+        Symbol* symFunc = (Symbol*)malloc(sizeof(Symbol));
+        symFunc->name = strdup(name);
+        symFunc->type = strdup(returnType);
+        symFunc->isConstant = 0;
+        symFunc->isFunction = 1;
+        symFunc->next = symbolTable;
+        symFunc->scopeLevel = currentScopeLevel;
+        symbolTable = symFunc;
+        
+        functionTable = func;
+        return func;
+    }
+
+    // Add a parameter to a function
+    void addParameter(Symbol* function, char* name, char* type) {
+        if (function->paramCount >= MAX_PARAMS) {
+            yyerror("Too many parameters for function");
+            return;
+        }
+        
+        // Create parameter symbol
+        Symbol* param = (Symbol*)malloc(sizeof(Symbol));
+        param->name = strdup(name);
+        param->type = strdup(type);
+        param->isConstant = 0;
+        param->isFunction = 0;
+        param->next = NULL;
+        param->scopeLevel = currentScopeLevel + 1;  // Parameters are in function's scope
+        
+        // Add to function's parameter list
+        function->parameters[function->paramCount++] = param;
+        
+        // Also add to symbol table
+        param->next = symbolTable;
+        symbolTable = param;
+    }
+
+    // Look up a function in the function table
+    Symbol* lookupFunction(char* name) {
+        Symbol* func = functionTable;
+        while (func != NULL) {
+            if (strcmp(func->name, name) == 0)
+                return func;
+            func = func->next;
+        }
+        return NULL;
+    }
+
+    // Enter a new scope (block)
+    void enterScope() {
+        currentScopeLevel++;
+    }
+
+    // Exit current scope
+    void exitScope() {
+        // Remove all symbols from the current scope level
+        Symbol* current = symbolTable;
+        Symbol* prev = NULL;
+        
+        while (current != NULL) {
+            if (current->scopeLevel == currentScopeLevel) {
+                // Remove this symbol
+                Symbol* toDelete = current;
+                if (prev == NULL) {
+                    symbolTable = current->next;
+                    current = symbolTable;
+                } else {
+                    prev->next = current->next;
+                    current = current->next;
+                }
+                free(toDelete->name);
+                free(toDelete->type);
+                free(toDelete);
+            } else {
+                prev = current;
+                current = current->next;
+            }
+        }
+        
+        currentScopeLevel--;
+    }
+
+    // Lookup in current scope or parent scopes
+    Symbol* lookupInScope(char* name) {
+        Symbol* sym = symbolTable;
+        while (sym != NULL) {
+            if (strcmp(sym->name, name) == 0)
+                return sym;
+            sym = sym->next;
+        }
+        return NULL;
+    }
+
+    // Generate function call code
+    char* generateFunctionCall(char* functionName, int argCount) {
+        char argCountStr[10];
+        sprintf(argCountStr, "%d", argCount);
+        
+        char* resultTemp = newTemp();
+        emit("call", functionName, argCountStr, resultTemp);
+        return resultTemp;
+    }
+
+    // Generate parameter passing code
+    void emitParameter(char* argName) {
+        emit("param", argName, "", "");
+    }
+
+    // Validate function call arguments against parameters
+    int validateFunctionCall(Symbol* func, int argCount) {
+        if (func->paramCount != argCount) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Function '%s' called with wrong number of arguments", func->name);
+            yyerror(errorMsg);
+            return 0;
+        }
+        // Ideally, we would also check argument types here
+        return 1;
+    }
+
+%}
 
 %union{
     int i;
@@ -244,11 +417,20 @@ void moveTwoToEnd(int n, int x) {
 
 
 
+
+
 %start program
 
 %type <id> constant
 %type <caseLabel> switch_case
 %type <caseLabel> switch_case_list
+%type <exprInfo> conditional_statement
+%type <exprInfo> loops
+%type <exprInfo> block
+%type <exprInfo> for_loop
+%type <exprInfo> while_loop
+%type <exprInfo> do_while_loop
+%type <exprInfo> switch_statement
 
 %%
 
@@ -283,6 +465,11 @@ var_list: init_declarator
 
 init_declarator: ID   { insertSymbol($1, currentType, isConst); }
   | ID ASSIGN expression {
+    if (strcmp(currentType, $3.type) != 0) {
+                char errorMsg[200];
+                sprintf(errorMsg, "Type mismatch in initialization of '%s': expected '%s' but got '%s'", $1, currentType, $3.type);
+                semanticError(errorMsg);
+            }
     insertSymbol($1, currentType, isConst);
     emit("=", $3.name, "", $1);
   }
@@ -302,18 +489,42 @@ type
     ;
 
 function_definition
-    : type ID LPAREN parameter_list RPAREN block
-    | VOID ID LPAREN parameter_list RPAREN block
+    : type ID {
+        currentFunction = insertFunction($2, currentType);
+        emit("function", $2, "", "");
+        enterScope();  // Enter function scope
+    } LPAREN parameter_list RPAREN block {
+        emit("endFunc", "", "", "");
+        exitScope();   // Exit function scope
+        currentFunction = NULL;
+    }
+    | VOID ID {
+        currentFunction = insertFunction($2, "void");
+        emit("function", $2, "", "");
+        enterScope();  // Enter function scope
+    } LPAREN parameter_list RPAREN block {
+        emit("endFunc", "", "", "");
+        exitScope();   // Exit function scope
+        currentFunction = NULL;
+    }
     ;
 
 argument_list
-    : /* empty */
+    : /* empty */ {
+        currentArgCount = 0;
+    }
     | argument_sequence
     ;
 
 argument_sequence
-    : expression
-    | argument_sequence COMMA expression
+    : expression {
+        emitParameter($1.name);
+        currentArgCount = 1; 
+    }
+    | argument_sequence COMMA expression {
+        emitParameter($3.name);
+        currentArgCount++;
+    }
     ;
 
 parameter_list
@@ -324,10 +535,22 @@ parameter_list
     ;
 
 parameter_declaration
-    : type ID
+    : type ID {
+        if (currentFunction) {
+            addParameter(currentFunction, $2, currentType);
+        }
+    }
     ;
 
-block : LBRACE block_items RBRACE ;
+block 
+    : LBRACE {
+        enterScope();
+    } block_items RBRACE {
+        exitScope();
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    ;
 
 block_items
   : /* empty */
@@ -343,29 +566,77 @@ statement
     : expression SEMI {
         $$ = $1;
     }
-    | conditional_statement
-    | loops
-    | block
-    | CONTINUE SEMI
-    | BREAK SEMI
-    | RETURN expression SEMI
-    | RETURN SEMI
+    | conditional_statement {
+        $$ = $1;
+    }
+    | loops {
+        $$ = $1;
+    }
+    | block {
+        $$ = $1;
+    }
+    | CONTINUE SEMI {
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    | BREAK SEMI {
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
+    | RETURN expression SEMI {
+        $$.name = $2.name;
+        $$.type = $2.type;
+    }
+    | RETURN SEMI {
+        $$.name = strdup("");
+        $$.type = strdup("void");
+    }
     ;
+
 
 expression
     : logical_or_expression {
         $$ = $1;
     }
     | expression ASSIGN expression {
-        // need to check if the variable is declared and if the types match
-
-        char* lhs_type = getType($1.name);
-
-        emit("=", $3.name, "", $1.name);
-        $$.name = $1.name;
-        $$.type = lhs_type;
+    char* lhs_type = getType($1.name);
+    if (lhs_type == NULL) {
+    lhs_type = strdup("unknown"); // Fallback to avoid NULL dereference
     }
-    ;
+    char* rhs_type = $3.type;
+
+    if (strcmp(lhs_type, rhs_type) != 0) {
+        semanticError("Type mismatch in assignment");
+    }
+
+    // Check for i = i + 1 or similar
+    if (
+        $3.name[0] == 't' &&  // it's a temp
+        quadIndex >= 1 &&
+        (
+            (strcmp(quads[quadIndex - 1].op, "+") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "-") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "*") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "/") == 0)
+        ) &&
+        strcmp(quads[quadIndex - 1].result, $3.name) == 0 &&
+        strcmp(quads[quadIndex - 1].arg1, $1.name) == 0
+    ) {
+        // Overwrite previous temp op with compound assignment
+        char compound[4];
+        sprintf(compound, "%s=", quads[quadIndex - 1].op);
+        strcpy(quads[quadIndex - 1].op, compound);
+        strcpy(quads[quadIndex - 1].result, $1.name);
+        quadIndex--;  // remove redundant temp result
+        emit(compound, $1.name, quads[quadIndex].arg2, $1.name);  // regenerate as compound
+    } else {
+        emit("=", $3.name, "", $1.name);
+    }
+
+    $$.name = $1.name;
+    $$.type = lhs_type;
+}
+;
 
 logical_or_expression
     : logical_and_expression {
@@ -449,6 +720,7 @@ mathematical_expression
         $$.name = temp;
         $$.type = resolveType($1.type, $3.type);
     }
+    ;
 
 
 
@@ -480,17 +752,24 @@ factor
         char* temp = newTemp();
         emit("!", $2.name, "", temp);
         $$.name = temp;
-        $$.type = $2.type; // here type remains the same
+        $$.type = $2.type;
     }
     | LPAREN expression RPAREN {
         $$ = $2;
     }
-    | MINUS factor // negative (-4)
+    | MINUS factor {
+        char* temp = newTemp();
+        emit("uminus", $2.name, "", temp);
+        $$.name = temp;
+        $$.type = $2.type;
+    }
     ;
 
 primary_expression
-    : ID {
-    // need to check if the variable is declared 
+    : ID { 
+    if (!lookup($1)) {
+        semanticError("Undeclared identifier used in expression");
+    }
     $$.name = $1;
     $$.type = getType($1);
     }
@@ -521,13 +800,24 @@ primary_expression
     $$.type = strdup("bool");
     }
     | ID LPAREN argument_list RPAREN {
-    // need to check if the function is declared
-    char* temp = newTemp();
-    emit("CALL", $1, "", temp);
-    $$.name = temp;
-    $$.type = getType($1); // assuming function return type is stored in symbol table 
+        Symbol* func = lookupFunction($1);
+        if (!func) {
+            char errorMsg[100];
+            sprintf(errorMsg, "Undefined function '%s'", $1);
+            yyerror(errorMsg);
+            $$.name = newTemp();
+            $$.type = strdup("unknown");
+        } else {
+            // Validate argument count
+            if (validateFunctionCall(func, currentArgCount)) {
+                $$.name = generateFunctionCall($1, currentArgCount);
+                $$.type = strdup(func->returnType);
+            } else {
+                $$.name = newTemp();
+                $$.type = strdup(func->returnType);
+            }
+        }
     }
-
     ;
     
 conditional_statement
@@ -625,16 +915,22 @@ constant : INT_LITERAL {
 }
 | ID {
     if(!lookup($1)){
-        yyerror("Undeclared identifier used as a constant for switch\n");
+        semanticError("Undeclared identifier used as a constant for switch\n");
     }
     $$ = strdup($1);
 }
 ;
 
 loops
-    : for_loop
-    | while_loop
-    | do_while_loop
+    : for_loop {
+        $$ = $1;
+    }
+    | while_loop {
+        $$ = $1;
+    }
+    | do_while_loop {
+        $$ = $1;
+    }
     ;
 for_init_decl
     : type ID ASSIGN expression {
@@ -718,13 +1014,20 @@ do_while_loop : DO {
         emit("ifFalseGoTo", $6.name, "", end);
         emit("goto", "", "", start);
         emit("label", "", "", end);
+        $$.name = strdup("");
+        $$.type = strdup("void");
     }
- ;
-
+    ;
 %%
 
 
-
+void printSymbolTable() {
+    printf("\nSymbol Table:\n");
+    for (Symbol* sym = symbolTable; sym != NULL; sym = sym->next) {
+        printf("Name: %s, Type: %s, Constant: %s\n", sym->name, sym->type, sym->isConstant ? "Yes" : "No");
+    }
+   
+}
 int main(int argc, char **argv) {
     initStack();
     if (argc > 1) {
@@ -735,9 +1038,12 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (yyparse() == 0){
+    if (yyparse() == 0 && !semanticErrorOccurred){
         printQuads();
+        printSymbolTable();
         return 0;
+    } else if (semanticErrorOccurred) {
+        fprintf(stderr, "Compilation failed due to semantic errors.\n");
     }
 
     return 1;
