@@ -115,7 +115,7 @@ CaseLabel* newCaseLabel(char* value, char* label){
     node->next = NULL;
     return node;
 }
-void emitCasees(CaseLabel* list, char* switchTemp){
+void emitCases(CaseLabel* list, char* switchTemp){
     char* endLabel = newLabel();
     CaseLabel* curr = list;
     char* defaultLabel = NULL;
@@ -475,31 +475,30 @@ primary_expression
     }
 
     ;
-
-conditional_statement
-    : IF LPAREN expression RPAREN block{
-        char* end = newLabel();
-        emit("ifFalseGoTo", $3, "", end);
-        // emit block of code
-        emit("label", "", "", end);
-    }
-    | IF LPAREN expression RPAREN block ELSE block{
-        char* end = newLabel();
-        char* elseLabel = newLabel();
-        emit("ifFalseGoTo", $3, "", elseLabel);
-        // condition true block $5
-        emit("goto", "", "", endLabel);
-        emit("label", "", "", elseLabel);
-        // else code block $7;
-        emit("label", "", "", endLabel);
-    }
+    conditional_statement
+        : IF LPAREN expression RPAREN block {
+            char* endLabel = newLabel();
+            emit("ifFalseGoTo", $3.name, "", endLabel);
+            // Emit code for the block
+            emit("label", "", "", endLabel);
+        }
+        | IF LPAREN expression RPAREN block ELSE block {
+            char* endLabel = newLabel();
+            char* elseLabel = newLabel();
+            emit("ifFalseGoTo", $3.name, "", elseLabel);
+            // Emit code for the true block ($5)
+            emit("goto", "", "", endLabel);
+            emit("label", "", "", elseLabel);
+            // Emit code for the else block ($7)
+            emit("label", "", "", endLabel);
+        }
     | switch_statement
     ;
 
 switch_statement : SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
     // if expression is true
     char* switchTemp = newTemp();
-    emit("assign", $3, "", switchTemp);
+    emit("assign", $3.name, "", switchTemp);
     emitCases($6, switchTemp);           
 };
 
@@ -514,23 +513,31 @@ switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
 };
 
 switch_case : CASE constant COLON statement{
-                char* label = new Label();
+                char* label = newLabel();
                 emit("label", "", "", label);
                 //emit statement code;
-                $$ = new CaseLabel($1, label);
+                $$ = newCaseLabel($2, label);
 }
             | DEFAULT COLON statement {
-                char* label = new Label();
+                char* label = newLabel();
                 emit("label", "", "", label);
                 // emit statement code
-                $$ = new CaseLabel("default", label);
+                $$ = newCaseLabel("default", label);
             }
             ;
 
-constant : INT_LITERAL {$$ = strdup($1)}
-| FLOAT_LITERAL {$$ = strdup($1)}
+constant : INT_LITERAL {
+    char buffer[20];
+    sprintf(buffer, "%d", $1);
+    $$ = strdup(buffer);
+}
+| FLOAT_LITERAL {
+    char buffer[20];
+    sprintf(buffer, "%f", $1);
+    $$ = strdup(buffer);
+}
 | ID {
-    if(!lockup($1)){
+    if(!lookup($1)){
         yyerror("Undeclared identifier used as a constant for switch\n");
     }
     $$ = strdup($1);
@@ -549,7 +556,7 @@ for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
             char* end = newLabel();
             // emit code related to init
             emit("label", "", "", start);
-            emit("ifFalseGoTo", $5, "", end);
+            emit("ifFalseGoTo", $5.name, "", end);
             // emite code l body ally hwa l b lock;
             // emit code for incrementing
             emit("goto", "", "", start);
@@ -561,7 +568,7 @@ for_loop : FOR LPAREN expression SEMI expression SEMI expression RPAREN block
             char* start = newLabel();
             char* end = newLabel();
             emit("label", "", "", start);
-            emit("ifFalseGoTo", $6, "", end);
+            emit("ifFalseGoTo", $6.name, "", end);
             // emite code l body ally hwa l b lock;
             // emit code for incrementing
             emit("goto", "", "", start);
@@ -574,7 +581,7 @@ while_loop : WHILE LPAREN expression RPAREN block {
     char* end = newLabel();
     // emit condition expression
     emit("label", "", "", start);
-    emit("ifFalseGoTo", $3, "", end);
+    emit("ifFalseGoTo", $3.name, "", end);
     // body
     emit("goto", "", "", start);
     emit("label", "", "", end);
@@ -588,7 +595,7 @@ do_while_loop : DO block WHILE LPAREN expression RPAREN SEMI
 
         // emit code for block
         // emit code for condition
-        emit("ifFalseGoTo", $5, "", end);
+        emit("ifFalseGoTo", $5.name, "", end);
         emit("goto", "", "", start);
         emit("label", "", "", end);
     }
