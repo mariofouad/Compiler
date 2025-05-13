@@ -186,7 +186,7 @@ int loopDepth = 0;
 int quadIndex = 0;
 int tempCount = 0;
 int labelCount = 0;
-
+bool fromSwitch = 0;
 char* newLabel() {
     char* name = malloc(10);
     sprintf(name, "L%d", labelCount++);
@@ -680,7 +680,6 @@ block_item
   : declaration
   | statement
   ;
-
 statement
     : expression SEMI {
         $$ = $1;
@@ -701,10 +700,13 @@ statement
         $$.type = strdup("void");
     }
     | BREAK SEMI {
-        char* breakLabel = getCurrentBreakLabel();
-        emit("goto", "", "", breakLabel);
-        $$.name = strdup("");
-        $$.type = strdup("void");
+        if(!fromSwitch){
+            char* breakLabel = getCurrentBreakLabel();
+            emit("goto", "", "", breakLabel);
+            $$.name = strdup("");
+            $$.type = strdup("void");
+        }
+        fromSwitch = 0;
     }
     | RETURN expression SEMI {
         if (currentFunction) {
@@ -1066,21 +1068,26 @@ switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
         $$ = $1;
     }
 };
-
-switch_case : CASE constant COLON {
+break_statement:
+    statement
+    | statement BREAK SEMI;
+switch_case 
+            :CASE constant COLON {
                 char* label = newLabel();
                 emit("label", "", "", label);
                 //emit statement code;
                 push(label);
-
+                fromSwitch = 1;
                 }
-            statement BREAK SEMI{
+            break_statement{
                 char* label = pop();
                 char* end = pop();
                 
                 emit("goto", "", "", end);
                 push(end);
                 $$ = newCaseLabel($2, label);
+                fromSwitch = 0;
+
             }
                 
             | DEFAULT COLON  {
@@ -1088,12 +1095,14 @@ switch_case : CASE constant COLON {
                 emit("label", "", "", label);
                 // emit statement code
                 push(label);
-            }statement BREAK SEMI{
+                fromSwitch = 1;
+            }break_statement{
                 char* label = pop();
                 char* end = pop();
                 emit("goto", "", "", end);
                 $$ = newCaseLabel("default", label);
                 push(end);
+                fromSwitch = 0;
 
             }
             ;
