@@ -315,21 +315,45 @@ expression
         $$ = $1;
     }
     | expression ASSIGN expression {
-        // need to check if the variable is declared and if the types match --> DONE 
-        if (!lookup($1.name)) {
+    if (!lookup($1.name)) {
         semanticError("Undeclared identifier used in assignment");
-        }
-
-        char* lhs_type = getType($1.name);
-        char* rhs_type = $3.type;
-        if (strcmp(lhs_type, rhs_type) != 0) {
-            semanticError("Type mismatch in assignment\n");
-        }
-        emit("=", $3.name, "", $1.name);
-        $$.name = $1.name;
-        $$.type = lhs_type;
     }
-    ;
+
+    char* lhs_type = getType($1.name);
+    char* rhs_type = $3.type;
+
+    if (strcmp(lhs_type, rhs_type) != 0) {
+        semanticError("Type mismatch in assignment");
+    }
+
+    // Check for i = i + 1 or similar
+    if (
+        $3.name[0] == 't' &&  // it's a temp
+        quadIndex >= 1 &&
+        (
+            (strcmp(quads[quadIndex - 1].op, "+") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "-") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "*") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "/") == 0)
+        ) &&
+        strcmp(quads[quadIndex - 1].result, $3.name) == 0 &&
+        strcmp(quads[quadIndex - 1].arg1, $1.name) == 0
+    ) {
+        // Overwrite previous temp op with compound assignment
+        char compound[4];
+        sprintf(compound, "%s=", quads[quadIndex - 1].op);
+        strcpy(quads[quadIndex - 1].op, compound);
+        strcpy(quads[quadIndex - 1].result, $1.name);
+        quadIndex--;  // remove redundant temp result
+        emit(compound, $1.name, quads[quadIndex].arg2, $1.name);  // regenerate as compound
+    } else {
+        emit("=", $3.name, "", $1.name);
+    }
+
+    $$.name = $1.name;
+    $$.type = lhs_type;
+}
+;
 
 logical_or_expression
     : logical_and_expression {

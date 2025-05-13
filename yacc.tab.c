@@ -673,11 +673,11 @@ static const yytype_uint16 yyrline[] =
      255,   256,   257,   258,   259,   263,   264,   267,   269,   273,
      274,   277,   279,   280,   281,   285,   288,   290,   292,   296,
      297,   301,   304,   305,   306,   307,   308,   309,   310,   314,
-     317,   335,   338,   347,   350,   359,   362,   368,   374,   380,
-     386,   392,   401,   404,   410,   421,   427,   433,   439,   443,
-     444,   450,   453,   462,   469,   475,   480,   485,   490,   495,
-     505,   511,   521,   524,   531,   531,   541,   547,   555,   560,
-     565,   574,   575,   576,   580,   589,   608,   621,   632
+     317,   359,   362,   371,   374,   383,   386,   392,   398,   404,
+     410,   416,   425,   428,   434,   445,   451,   457,   463,   467,
+     468,   474,   477,   486,   493,   499,   504,   509,   514,   519,
+     529,   535,   545,   548,   555,   555,   565,   571,   579,   584,
+     589,   598,   599,   600,   604,   613,   632,   645,   656
 };
 #endif
 
@@ -1863,26 +1863,50 @@ yyreduce:
 /* Line 1455 of yacc.c  */
 #line 317 "yacc.y"
     {
-        // need to check if the variable is declared and if the types match --> DONE 
-        if (!lookup((yyvsp[(1) - (3)].exprInfo).name)) {
+    if (!lookup((yyvsp[(1) - (3)].exprInfo).name)) {
         semanticError("Undeclared identifier used in assignment");
-        }
+    }
 
-        char* lhs_type = getType((yyvsp[(1) - (3)].exprInfo).name);
-        char* rhs_type = (yyvsp[(3) - (3)].exprInfo).type;
-        if (strcmp(lhs_type, rhs_type) != 0) {
-            semanticError("Type mismatch in assignment\n");
-        }
+    char* lhs_type = getType((yyvsp[(1) - (3)].exprInfo).name);
+    char* rhs_type = (yyvsp[(3) - (3)].exprInfo).type;
+
+    if (strcmp(lhs_type, rhs_type) != 0) {
+        semanticError("Type mismatch in assignment");
+    }
+
+    // Check for i = i + 1 or similar
+    if (
+        (yyvsp[(3) - (3)].exprInfo).name[0] == 't' &&  // it's a temp
+        quadIndex >= 1 &&
+        (
+            (strcmp(quads[quadIndex - 1].op, "+") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "-") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "*") == 0 ||
+             strcmp(quads[quadIndex - 1].op, "/") == 0)
+        ) &&
+        strcmp(quads[quadIndex - 1].result, (yyvsp[(3) - (3)].exprInfo).name) == 0 &&
+        strcmp(quads[quadIndex - 1].arg1, (yyvsp[(1) - (3)].exprInfo).name) == 0
+    ) {
+        // Overwrite previous temp op with compound assignment
+        char compound[4];
+        sprintf(compound, "%s=", quads[quadIndex - 1].op);
+        strcpy(quads[quadIndex - 1].op, compound);
+        strcpy(quads[quadIndex - 1].result, (yyvsp[(1) - (3)].exprInfo).name);
+        quadIndex--;  // remove redundant temp result
+        emit(compound, (yyvsp[(1) - (3)].exprInfo).name, quads[quadIndex].arg2, (yyvsp[(1) - (3)].exprInfo).name);  // regenerate as compound
+    } else {
         emit("=", (yyvsp[(3) - (3)].exprInfo).name, "", (yyvsp[(1) - (3)].exprInfo).name);
-        (yyval.exprInfo).name = (yyvsp[(1) - (3)].exprInfo).name;
-        (yyval.exprInfo).type = lhs_type;
-    ;}
+    }
+
+    (yyval.exprInfo).name = (yyvsp[(1) - (3)].exprInfo).name;
+    (yyval.exprInfo).type = lhs_type;
+;}
     break;
 
   case 51:
 
 /* Line 1455 of yacc.c  */
-#line 335 "yacc.y"
+#line 359 "yacc.y"
     {
         (yyval.exprInfo) = (yyvsp[(1) - (1)].exprInfo);
     ;}
@@ -1891,7 +1915,7 @@ yyreduce:
   case 52:
 
 /* Line 1455 of yacc.c  */
-#line 338 "yacc.y"
+#line 362 "yacc.y"
     {
         char* temp = newTemp();
         emit("||", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -1903,7 +1927,7 @@ yyreduce:
   case 53:
 
 /* Line 1455 of yacc.c  */
-#line 347 "yacc.y"
+#line 371 "yacc.y"
     {
         (yyval.exprInfo) = (yyvsp[(1) - (1)].exprInfo);
     ;}
@@ -1912,7 +1936,7 @@ yyreduce:
   case 54:
 
 /* Line 1455 of yacc.c  */
-#line 350 "yacc.y"
+#line 374 "yacc.y"
     {
         char* temp = newTemp();
         emit("&&", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -1924,7 +1948,7 @@ yyreduce:
   case 55:
 
 /* Line 1455 of yacc.c  */
-#line 359 "yacc.y"
+#line 383 "yacc.y"
     {
         (yyval.exprInfo) = (yyvsp[(1) - (1)].exprInfo);
     ;}
@@ -1933,7 +1957,7 @@ yyreduce:
   case 56:
 
 /* Line 1455 of yacc.c  */
-#line 362 "yacc.y"
+#line 386 "yacc.y"
     {
         char* temp = newTemp();
         emit("==", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -1945,7 +1969,7 @@ yyreduce:
   case 57:
 
 /* Line 1455 of yacc.c  */
-#line 368 "yacc.y"
+#line 392 "yacc.y"
     {
         char* temp = newTemp();
         emit("!=", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -1957,7 +1981,7 @@ yyreduce:
   case 58:
 
 /* Line 1455 of yacc.c  */
-#line 374 "yacc.y"
+#line 398 "yacc.y"
     {
         char* temp = newTemp();
         emit("<", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -1969,7 +1993,7 @@ yyreduce:
   case 59:
 
 /* Line 1455 of yacc.c  */
-#line 380 "yacc.y"
+#line 404 "yacc.y"
     {
         char* temp = newTemp();
         emit(">", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -1981,7 +2005,7 @@ yyreduce:
   case 60:
 
 /* Line 1455 of yacc.c  */
-#line 386 "yacc.y"
+#line 410 "yacc.y"
     {
         char* temp = newTemp();
         emit("<=", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -1993,7 +2017,7 @@ yyreduce:
   case 61:
 
 /* Line 1455 of yacc.c  */
-#line 392 "yacc.y"
+#line 416 "yacc.y"
     {
         char* temp = newTemp();
         emit(">=", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -2005,7 +2029,7 @@ yyreduce:
   case 62:
 
 /* Line 1455 of yacc.c  */
-#line 401 "yacc.y"
+#line 425 "yacc.y"
     {
         (yyval.exprInfo) = (yyvsp[(1) - (1)].exprInfo);
     ;}
@@ -2014,7 +2038,7 @@ yyreduce:
   case 63:
 
 /* Line 1455 of yacc.c  */
-#line 404 "yacc.y"
+#line 428 "yacc.y"
     {
         char* temp = newTemp();
         emit("+", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -2026,7 +2050,7 @@ yyreduce:
   case 64:
 
 /* Line 1455 of yacc.c  */
-#line 410 "yacc.y"
+#line 434 "yacc.y"
     {
         char* temp = newTemp();
         emit("-", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -2038,7 +2062,7 @@ yyreduce:
   case 65:
 
 /* Line 1455 of yacc.c  */
-#line 421 "yacc.y"
+#line 445 "yacc.y"
     {
         char* temp = newTemp();
         emit("*", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -2050,7 +2074,7 @@ yyreduce:
   case 66:
 
 /* Line 1455 of yacc.c  */
-#line 427 "yacc.y"
+#line 451 "yacc.y"
     {
         char* temp = newTemp();
         emit("/", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -2062,7 +2086,7 @@ yyreduce:
   case 67:
 
 /* Line 1455 of yacc.c  */
-#line 433 "yacc.y"
+#line 457 "yacc.y"
     {
         char* temp = newTemp();
         emit("%", (yyvsp[(1) - (3)].exprInfo).name, (yyvsp[(3) - (3)].exprInfo).name, temp);
@@ -2074,21 +2098,21 @@ yyreduce:
   case 68:
 
 /* Line 1455 of yacc.c  */
-#line 439 "yacc.y"
+#line 463 "yacc.y"
     {(yyval.exprInfo)=(yyvsp[(1) - (1)].exprInfo);;}
     break;
 
   case 69:
 
 /* Line 1455 of yacc.c  */
-#line 443 "yacc.y"
+#line 467 "yacc.y"
     {(yyval.exprInfo)=(yyvsp[(1) - (1)].exprInfo);;}
     break;
 
   case 70:
 
 /* Line 1455 of yacc.c  */
-#line 444 "yacc.y"
+#line 468 "yacc.y"
     {
         char* temp = newTemp();
         emit("!", (yyvsp[(2) - (2)].exprInfo).name, "", temp);
@@ -2100,7 +2124,7 @@ yyreduce:
   case 71:
 
 /* Line 1455 of yacc.c  */
-#line 450 "yacc.y"
+#line 474 "yacc.y"
     {
         (yyval.exprInfo) = (yyvsp[(2) - (3)].exprInfo);
     ;}
@@ -2109,7 +2133,7 @@ yyreduce:
   case 72:
 
 /* Line 1455 of yacc.c  */
-#line 453 "yacc.y"
+#line 477 "yacc.y"
     {
         char* temp = newTemp();
         emit("-", (yyvsp[(2) - (2)].exprInfo).name, "", temp);
@@ -2121,7 +2145,7 @@ yyreduce:
   case 73:
 
 /* Line 1455 of yacc.c  */
-#line 462 "yacc.y"
+#line 486 "yacc.y"
     { 
     if (!lookup((yyvsp[(1) - (1)].id))) {
         semanticError("Undeclared identifier used in expression\n");
@@ -2134,7 +2158,7 @@ yyreduce:
   case 74:
 
 /* Line 1455 of yacc.c  */
-#line 469 "yacc.y"
+#line 493 "yacc.y"
     {
     char* temp = newTemp();
     emit("=", (yyvsp[(1) - (1)].id), "", temp);
@@ -2146,7 +2170,7 @@ yyreduce:
   case 75:
 
 /* Line 1455 of yacc.c  */
-#line 475 "yacc.y"
+#line 499 "yacc.y"
     {
     char val[4]; sprintf(val, "'%c'", (yyvsp[(1) - (1)].c));
     (yyval.exprInfo).name = strdup(val);
@@ -2157,7 +2181,7 @@ yyreduce:
   case 76:
 
 /* Line 1455 of yacc.c  */
-#line 480 "yacc.y"
+#line 504 "yacc.y"
     {
     char val[20]; sprintf(val, "%f", (yyvsp[(1) - (1)].f));
     (yyval.exprInfo).name = strdup(val);
@@ -2168,7 +2192,7 @@ yyreduce:
   case 77:
 
 /* Line 1455 of yacc.c  */
-#line 485 "yacc.y"
+#line 509 "yacc.y"
     {
     char val[20]; sprintf(val, "%d", (yyvsp[(1) - (1)].i));
     (yyval.exprInfo).name = strdup(val);
@@ -2179,7 +2203,7 @@ yyreduce:
   case 78:
 
 /* Line 1455 of yacc.c  */
-#line 490 "yacc.y"
+#line 514 "yacc.y"
     {
     char val[10]; sprintf(val, "%d", (yyvsp[(1) - (1)].i));
     (yyval.exprInfo).name = strdup(val);
@@ -2190,7 +2214,7 @@ yyreduce:
   case 79:
 
 /* Line 1455 of yacc.c  */
-#line 495 "yacc.y"
+#line 519 "yacc.y"
     {
     // need to check if the function is declared
     char* temp = newTemp();
@@ -2203,7 +2227,7 @@ yyreduce:
   case 80:
 
 /* Line 1455 of yacc.c  */
-#line 505 "yacc.y"
+#line 529 "yacc.y"
     {
             char* endLabel = newLabel();
             emit("ifFalseGoTo", (yyvsp[(3) - (5)].exprInfo).name, "", endLabel);
@@ -2215,7 +2239,7 @@ yyreduce:
   case 81:
 
 /* Line 1455 of yacc.c  */
-#line 511 "yacc.y"
+#line 535 "yacc.y"
     {
             char* endLabel = newLabel();
             char* elseLabel = newLabel();
@@ -2231,7 +2255,7 @@ yyreduce:
   case 83:
 
 /* Line 1455 of yacc.c  */
-#line 524 "yacc.y"
+#line 548 "yacc.y"
     {
     // if expression is true
     char* switchTemp = newTemp();
@@ -2243,14 +2267,14 @@ yyreduce:
   case 84:
 
 /* Line 1455 of yacc.c  */
-#line 531 "yacc.y"
+#line 555 "yacc.y"
     {(yyval.caseLabel) = NULL;}
     break;
 
   case 85:
 
 /* Line 1455 of yacc.c  */
-#line 531 "yacc.y"
+#line 555 "yacc.y"
     {
     CaseLabel* q = (yyvsp[(1) - (2)].caseLabel);
     if(!q) (yyval.caseLabel) = (yyvsp[(2) - (2)].caseLabel);
@@ -2265,7 +2289,7 @@ yyreduce:
   case 86:
 
 /* Line 1455 of yacc.c  */
-#line 541 "yacc.y"
+#line 565 "yacc.y"
     {
                 char* label = newLabel();
                 emit("label", "", "", label);
@@ -2277,7 +2301,7 @@ yyreduce:
   case 87:
 
 /* Line 1455 of yacc.c  */
-#line 547 "yacc.y"
+#line 571 "yacc.y"
     {
                 char* label = newLabel();
                 emit("label", "", "", label);
@@ -2289,7 +2313,7 @@ yyreduce:
   case 88:
 
 /* Line 1455 of yacc.c  */
-#line 555 "yacc.y"
+#line 579 "yacc.y"
     {
     char buffer[20];
     sprintf(buffer, "%d", (yyvsp[(1) - (1)].i));
@@ -2300,7 +2324,7 @@ yyreduce:
   case 89:
 
 /* Line 1455 of yacc.c  */
-#line 560 "yacc.y"
+#line 584 "yacc.y"
     {
     char buffer[20];
     sprintf(buffer, "%f", (yyvsp[(1) - (1)].f));
@@ -2311,7 +2335,7 @@ yyreduce:
   case 90:
 
 /* Line 1455 of yacc.c  */
-#line 565 "yacc.y"
+#line 589 "yacc.y"
     {
     if(!lookup((yyvsp[(1) - (1)].id))){
         semanticError("Undeclared identifier used as a constant for switch\n");
@@ -2323,7 +2347,7 @@ yyreduce:
   case 94:
 
 /* Line 1455 of yacc.c  */
-#line 580 "yacc.y"
+#line 604 "yacc.y"
     {
         insertSymbol((yyvsp[(2) - (4)].id), currentType, isConst);
         emit("=", (yyvsp[(4) - (4)].exprInfo).name, "", (yyvsp[(2) - (4)].id));
@@ -2335,7 +2359,7 @@ yyreduce:
   case 95:
 
 /* Line 1455 of yacc.c  */
-#line 590 "yacc.y"
+#line 614 "yacc.y"
     {
         char* start = newLabel();
         char* end = newLabel();
@@ -2359,7 +2383,7 @@ yyreduce:
   case 96:
 
 /* Line 1455 of yacc.c  */
-#line 609 "yacc.y"
+#line 633 "yacc.y"
     {
     char* start = newLabel();
     char* end = newLabel();
@@ -2375,7 +2399,7 @@ yyreduce:
   case 97:
 
 /* Line 1455 of yacc.c  */
-#line 621 "yacc.y"
+#line 645 "yacc.y"
     {
     char* start = newLabel();
     char* end = newLabel();
@@ -2391,7 +2415,7 @@ yyreduce:
   case 98:
 
 /* Line 1455 of yacc.c  */
-#line 633 "yacc.y"
+#line 657 "yacc.y"
     {
         char* start = newLabel();
         char* end = newLabel();
@@ -2408,7 +2432,7 @@ yyreduce:
 
 
 /* Line 1455 of yacc.c  */
-#line 2412 "yacc.tab.c"
+#line 2436 "yacc.tab.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -2620,7 +2644,7 @@ yyreturn:
 
 
 /* Line 1675 of yacc.c  */
-#line 646 "yacc.y"
+#line 670 "yacc.y"
 
 
 
