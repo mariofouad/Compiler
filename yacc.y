@@ -621,7 +621,12 @@ factor
     | LPAREN expression RPAREN {
         $$ = $2;
     }
-    | MINUS factor // negative (-4)
+    | MINUS factor {
+        char* temp = newTemp();
+        emit("uminus", $2.name, "", temp);
+        $$.name = temp;
+        $$.type = $2.type;
+    }
     ;
 
 primary_expression
