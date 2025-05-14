@@ -189,7 +189,6 @@ int loopDepth = 0;
 int quadIndex = 0;
 int tempCount = 0;
 int labelCount = 0;
-bool fromSwitch = 0;
 char* newLabel() {
     char* name = malloc(10);
     sprintf(name, "L%d", labelCount++);
@@ -711,13 +710,10 @@ statement
         $$.type = strdup("void");
     }
     | BREAK SEMI {
-        if(!fromSwitch){
-            char* breakLabel = getCurrentBreakLabel();
-            emit("goto", "", "", breakLabel);
-            $$.name = strdup("");
-            $$.type = strdup("void");
-        }
-        fromSwitch = 0;
+        char* breakLabel = getCurrentBreakLabel();
+        emit("goto", "", "", breakLabel);
+        $$.name = strdup("");
+        $$.type = strdup("void");
     }
 | RETURN expression SEMI {
     if (currentFunction) {
