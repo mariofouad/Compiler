@@ -189,7 +189,6 @@ int loopDepth = 0;
 int quadIndex = 0;
 int tempCount = 0;
 int labelCount = 0;
-bool fromSwitch = 0;
 char* newLabel() {
     char* name = malloc(10);
     sprintf(name, "L%d", labelCount++);
@@ -711,13 +710,10 @@ statement
         $$.type = strdup("void");
     }
     | BREAK SEMI {
-        if(!fromSwitch){
-            char* breakLabel = getCurrentBreakLabel();
-            emit("goto", "", "", breakLabel);
-            $$.name = strdup("");
-            $$.type = strdup("void");
-        }
-        fromSwitch = 0;
+        char* breakLabel = getCurrentBreakLabel();
+        emit("goto", "", "", breakLabel);
+        $$.name = strdup("");
+        $$.type = strdup("void");
     }
 | RETURN expression SEMI {
     if (currentFunction) {
@@ -1086,15 +1082,14 @@ switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
     }
 };
 break_statement:
-    statement
-    | statement BREAK SEMI;
+    /* */
+    | break_statement statement;
 switch_case 
             :CASE constant COLON {
                 char* label = newLabel();
                 emit("label", "", "", label);
                 //emit statement code;
                 push(label);
-                fromSwitch = 1;
                 }
             break_statement{
                 char* label = pop();
@@ -1103,7 +1098,6 @@ switch_case
                 emit("goto", "", "", end);
                 push(end);
                 $$ = newCaseLabel($2, label);
-                fromSwitch = 0;
 
             }
                 
@@ -1112,15 +1106,12 @@ switch_case
                 emit("label", "", "", label);
                 // emit statement code
                 push(label);
-                fromSwitch = 1;
             }break_statement{
                 char* label = pop();
                 char* end = pop();
                 emit("goto", "", "", end);
                 $$ = newCaseLabel("default", label);
                 push(end);
-                fromSwitch = 0;
-
             }
             ;
 
