@@ -36,7 +36,6 @@ int for_start = -1;
 int hasReturnStatement = 0;
 int blockNestingLevel = 0;
 
-
     // === ERROR HANDLING ===
 
     extern int yylineno;
@@ -189,6 +188,7 @@ int loopDepth = 0;
 int quadIndex = 0;
 int tempCount = 0;
 int labelCount = 0;
+char* switchCharacter;
 char* newLabel() {
     char* name = malloc(10);
     sprintf(name, "L%d", labelCount++);
@@ -216,37 +216,6 @@ void printQuads() {
         printf("%d: (%s, %s, %s, %s)\n", i, quads[i].op, quads[i].arg1, quads[i].arg2, quads[i].result);
     }
 }
-// Linked List representation of Cases
-typedef struct CaseLabel{
-    char* value;
-    char* label;
-    struct CaseLabel* next;
-} CaseLabel;
-CaseLabel* newCaseLabel(char* value, char* label){
-    CaseLabel* node = malloc(sizeof(CaseLabel));
-    node->value = strdup(value);
-    node->label = strdup(label);
-    node->next = NULL;
-    return node;
-}
-void emitCases(CaseLabel* list, char* switchTemp){
-
-    CaseLabel* curr = list;
-    char* defaultLabel = NULL;
-    while(curr){
-        if(strcmp(curr->value, "default") == 0){
-            defaultLabel = curr->label;
-        }else{
-            emit("ifEqualGoTo", switchTemp, curr->value, curr->label);
-        }
-        curr = curr->next;
-    }
-    if(defaultLabel){
-        emit("goto", "", "", defaultLabel);
-    }
-
-}
-
 
     // === FUNCTION TABLE MANAGEMENT ===
     Symbol* insertFunction(char* name, char* returnType) {
@@ -1063,54 +1032,38 @@ optional_else
 switch_statement : SWITCH {
     char* switchEndLabel = newLabel();
     push(switchEndLabel);
-}LPAREN expression RPAREN LBRACE switch_case_list RBRACE {
-    // if expression is true
-    char* switchTemp = newTemp();
-    emit("=", $4.name, "", switchTemp);
-    emitCases($7, switchTemp);
+}LPAREN expression RPAREN LBRACE {
+    switchCharacter = $4.name; 
+}switch_case_list RBRACE {
     char* switchEndLabel = pop();
-    emit("label", "", "", switchEndLabel);           
+    emit("label", "", "", switchEndLabel);   
 };
 
-switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case {
-    CaseLabel* q = $1;
-    if(!q) $$ = $2;
-    else{
-        while(q->next) q = q->next;
-        q->next = $2;
-        $$ = $1;
-    }
-};
-break_statement:
+switch_case_list : /* empty */ {$$ = NULL}| switch_case_list switch_case;
+recursive_switch_statement:
     /* */
-    | break_statement statement;
+    | recursive_switch_statement statement;
 switch_case 
             :CASE constant COLON {
-                char* label = newLabel();
-                emit("label", "", "", label);
-                //emit statement code;
-                push(label);
-                }
-            break_statement{
-                char* label = pop();
-                char* end = pop();
-                
-                emit("goto", "", "", end);
+                char* temp = newTemp();
+                emit("==", switchCharacter, $2, temp);
+                char* end = newLabel();
+                emit("ifFaleGoTo", temp, "", end);
                 push(end);
-                $$ = newCaseLabel($2, label);
+                }
+            recursive_switch_statement{
+                char* currentEnd = pop();
+                char* allEnd = pop();
+                emit("goto", "", "", allEnd);
+                emit("label", "", "", currentEnd);
+                push(allEnd);
 
             }
                 
             | DEFAULT COLON  {
-                char* label = newLabel();
-                emit("label", "", "", label);
-                // emit statement code
-                push(label);
-            }break_statement{
-                char* label = pop();
+            }recursive_switch_statement{
                 char* end = pop();
                 emit("goto", "", "", end);
-                $$ = newCaseLabel("default", label);
                 push(end);
             }
             ;
