@@ -731,67 +731,68 @@ expression
         $$ = $1;
     }
     | expression ASSIGN expression {
-        $1.isTarget = 1;  
+    $1.isTarget = 1;
 
+    if ($3.name[0] != 't' && $3.name[0] != '\'' && !isdigit($3.name[0])) {
+        checkInitialized($3.name);
+    }
 
-        if ($3.name[0] != 't' && $3.name[0] != '\'' && !isdigit($3.name[0])) {
-            checkInitialized($3.name);
-        }
+    if (!lookup($1.name)) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Assignment to undeclared variable '%s'", $1.name);
+        semanticError(errorMsg);
+    }
 
-        if (!lookup($1.name)) {
-            char errorMsg[100];
-            sprintf(errorMsg, "Assignment to undeclared variable '%s'", $1.name);
-            semanticError(errorMsg);
-        }
+    if (isConstant($1.name)) {
+        semanticError("Cannot modify constant variable");
+    }
 
-        if (isConstant($1.name) == 1) {
-            semanticError("Cannot modify constant variable");
-        }
-        
-        char* lhs_type = getType($1.name);
-        char* rhs_type = $3.type;
+    char* lhs_type = getType($1.name);
+    char* rhs_type = $3.type;
 
-        // Only check type mismatch if the variable exists (has a type)
-        if (lhs_type != NULL && !areTypesCompatible(lhs_type, rhs_type)) {
-        if (lhs_type != NULL && !areTypesCompatible(lhs_type, rhs_type)) {
-            semanticError("Type mismatch in assignment");
-        }
-        
-        // Now set a fallback for code generation
-        if (lhs_type == NULL) {
-            lhs_type = strdup("unknown");
-        }
+    if (lhs_type != NULL && !areTypesCompatible(lhs_type, rhs_type)) {
+        semanticError("Type mismatch in assignment");
+    }
 
-    // Check for i = i + 1 or similar
+    if (lhs_type == NULL) {
+        lhs_type = strdup("unknown");
+    }
+
+    // Compound assignment detection
     if (
-        $3.name[0] == 't' &&  // it's a temp
+        $3.name[0] == 't' &&
         quadIndex >= 1 &&
         (
-            (strcmp(quads[quadIndex - 1].op, "+") == 0 ||
-             strcmp(quads[quadIndex - 1].op, "-") == 0 ||
-             strcmp(quads[quadIndex - 1].op, "*") == 0 ||
-             strcmp(quads[quadIndex - 1].op, "/") == 0)
+            strcmp(quads[quadIndex - 1].op, "+") == 0 ||
+            strcmp(quads[quadIndex - 1].op, "-") == 0 ||
+            strcmp(quads[quadIndex - 1].op, "*") == 0 ||
+            strcmp(quads[quadIndex - 1].op, "/") == 0
         ) &&
         strcmp(quads[quadIndex - 1].result, $3.name) == 0 &&
         strcmp(quads[quadIndex - 1].arg1, $1.name) == 0
     ) {
-        // Overwrite previous temp op with compound assignment
+        // Convert to compound assignment
         char compound[4];
         sprintf(compound, "%s=", quads[quadIndex - 1].op);
-        strcpy(quads[quadIndex - 1].op, compound);
-        strcpy(quads[quadIndex - 1].result, $1.name);
-        quadIndex--;  // remove redundant temp result
-        emit(compound, $1.name, quads[quadIndex].arg2, $1.name);  // regenerate as compound
-        setInitialized($1.name);  // mark as initialized
+
+        // Reuse operand 2 from previous quad
+        char* rhs = quads[quadIndex - 1].arg2;
+
+        // Remove previous quad
+        quadIndex--;
+
+        // Emit optimized compound quad
+        emit(compound, $1.name, rhs, $1.name);
+
+        setInitialized($1.name);
     } else {
         emit("=", $3.name, "", $1.name);
-        setInitialized($1.name);  // mark as initialized
+        setInitialized($1.name);
     }
 
-        $$.name = $1.name;
-        $$.type = lhs_type;
+    $$.name = $1.name;
+    $$.type = lhs_type;
 }
-    }
 ;
 
 logical_or_expression
